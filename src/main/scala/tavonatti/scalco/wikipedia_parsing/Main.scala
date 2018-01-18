@@ -68,10 +68,9 @@ object Main extends App {
     val edgeList=new util.ArrayList[Edge[String]]()
     while (it.hasNext){
       val title=it.next();
-      val temp=df.filter(functions.lower(df.col("title")).equalTo(title)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
+      val temp=df.filter(functions.lower(df.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
       if(temp.size()>0) {
         val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]
-        println("Id: " + idEdge + " title: " + title)
         val e = Edge(link._1.asInstanceOf[Long], idEdge.asInstanceOf[Long], title)
         edgeList.add(e)
       }
