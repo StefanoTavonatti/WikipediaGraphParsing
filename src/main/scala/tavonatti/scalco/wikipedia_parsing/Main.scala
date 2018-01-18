@@ -63,7 +63,7 @@ object Main extends App {
     }
   })
 
-  val edges: RDD[util.ArrayList[Edge[String]]]=links.map(link=>{
+  val edges: RDD[Edge[String]]=links.flatMap(link=>{
     val it=link._2.iterator()
     val edgeList=new util.ArrayList[Edge[String]]()
     while (it.hasNext){
@@ -76,13 +76,9 @@ object Main extends App {
         edgeList.add(e)
       }
     }
-    (edgeList)
+    (edgeList.asScala.iterator)
   })
 
-  val edgesParalelized:RDD[Edge[String]]=edges.flatMap(l=>{
-    (l.asScala.iterator)
-  })
-
-  edgesParalelized.coalesce(1).saveAsTextFile("outputs/edges3")
+  edges.coalesce(1).saveAsTextFile("outputs/edges4")
 
 }
