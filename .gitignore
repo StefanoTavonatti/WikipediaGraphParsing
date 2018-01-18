@@ -32,3 +32,4 @@ build
 *.class
 
 spark-warehouse/
+outputs/
