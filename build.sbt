@@ -4,6 +4,8 @@ version := "0.1"
 
 scalaVersion := "2.11.4"
 
+resolvers+="Neo4J" at "https://m2.neo4j.org/content/repositories/releases/"
+
 libraryDependencies ++= {
   val sparkVer = "2.2.0"
   Seq(
@@ -14,3 +16,6 @@ libraryDependencies ++= {
 
   )
 }
+
+// https://mvnrepository.com/artifact/org.neo4j.spark/neo4j-spark-connector
+libraryDependencies += "org.neo4j.spark" %% "neo4j-spark-connector" % "1.0.0-RC1"
