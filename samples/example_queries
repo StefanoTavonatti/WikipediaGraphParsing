@@ -1,0 +1,3 @@
+MATCH (ee:Person) WHERE ee.name = "Emil"
+MATCH (jj:Person) WHERE jj.name = "Jake"
+CREATE (ee)-[:KNOWS]->(jj);

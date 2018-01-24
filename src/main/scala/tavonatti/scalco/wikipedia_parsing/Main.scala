@@ -2,13 +2,18 @@ package tavonatti.scalco.wikipedia_parsing
 
 import java.util
 
+import org.apache.spark.SparkConf
+import org.apache.spark.graphx.lib.PageRank
 import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.storage.StorageLevel
+import org.neo4j.driver.v1.{AuthTokens, GraphDatabase}
+import org.neo4j.spark.Neo4j.{NameProp, Pattern}
+import org.neo4j.spark.Neo4jGraph
+import org.neo4j.spark._
 
 import scala.util.matching.Regex
-
 import tavonatti.scalco.wikipedia_parsing.Utils
 
 object Main extends App {
@@ -18,10 +23,17 @@ object Main extends App {
 
   //https://en.wikipedia.org/wiki/Wikipedia:Tutorial/Formatting
 
+  val conf = new SparkConf()
+  conf.set("spark.neo4j.bolt.url","bolt://127.0.0.1:7687")
+  conf.set("spark.neo4j.bolt.user","neo4j")
+  conf.set("spark.neo4j.bolt.password","password")
+
+
   val spark = SparkSession
     .builder()
     .appName("Spark SQL basic example")
     .master("local[*]")
+      .config(conf)
     .getOrCreate()
 
   val sc=spark.sparkContext
@@ -37,6 +49,7 @@ object Main extends App {
   df.persist(StorageLevel.MEMORY_AND_DISK)
 
   //df.printSchema()
+
 
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
     /*
@@ -81,9 +94,16 @@ object Main extends App {
   })
 
 
+  val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
-  val pageGraph = Graph(nodes, edges)
-
+  println("save graph")
+  val neo = Neo4j(sc)
+  println(neo.saveGraph(pageGraph,"page_name",Pattern(NameProp("Page","id"),Seq(NameProp("CONTAINS","page")),NameProp("Page","id")),merge = true))
   //println(Utils.toGexf(pageGraph))
+
+
+
+
+
 
 }
