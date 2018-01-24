@@ -12,7 +12,8 @@ libraryDependencies ++= {
     "org.apache.spark" %% "spark-core" % sparkVer,
     "org.apache.spark" %% "spark-sql" % sparkVer ,
     "com.databricks" %% "spark-xml" % "0.4.1",
-    "org.apache.spark" %% "spark-graphx" % sparkVer
+    "org.apache.spark" %% "spark-graphx" % sparkVer,
+    "org.apache.spark" %% "spark-mllib" % sparkVer
 
   )
 }
