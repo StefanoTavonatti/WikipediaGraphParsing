@@ -65,6 +65,8 @@ object Main extends App {
     col("datasetB.id").alias("idB"),
     col("JaccardDistance"))
 
+  jaccardTable.cache()
+
   jaccardTable.printSchema()
 
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
