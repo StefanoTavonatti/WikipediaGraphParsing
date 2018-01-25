@@ -52,6 +52,20 @@ object Main extends App {
 
   //df.printSchema()
 
+  val dfClean=Utils.tokenizeAndClean(df.withColumn("text",$"revision.text._VALUE"))
+
+  val mh = new MinHashLSH()
+    .setNumHashTables(5)
+    .setInputCol("frequencyVector")
+    .setOutputCol("hashes")
+
+  val model=mh.fit(dfClean)
+
+  val jaccardTable=model.approxSimilarityJoin(dfClean, dfClean,1, "JaccardDistance").select(col("datasetA.id").alias("idA"),
+    col("datasetB.id").alias("idB"),
+    col("JaccardDistance"))
+
+  jaccardTable.printSchema()
 
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
     /*
@@ -88,7 +102,12 @@ object Main extends App {
       val temp=df.filter(functions.lower(df.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
       if(temp.size()>0) {
         val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]
-        val e = Edge(link._1.asInstanceOf[Long], idEdge.asInstanceOf[Long], title)
+        val sim=jaccardTable.filter(col("idA").equalTo(link._1).and(col("idB").equalTo(idEdge))).select("JaccardDistance").collect()
+        var link_value = "NaN"
+        if(sim.length>0){
+          link_value=""+sim.head
+        }
+        val e = Edge(link._1.asInstanceOf[Long], idEdge.asInstanceOf[Long], link_value)
         edgeList.add(e)
       }
     }
@@ -98,23 +117,10 @@ object Main extends App {
 
   val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
-  val dfClean=Utils.tokenizeAndClean(df.withColumn("text",$"revision.text._VALUE"))
 
-  val mh = new MinHashLSH()
-    .setNumHashTables(5)
-    .setInputCol("frequencyVector")
-    .setOutputCol("hashes")
-
-  val model=mh.fit(dfClean)
-
-  model.approxSimilarityJoin(dfClean, dfClean,1, "JaccardDistance").select(col("datasetA.id").alias("idA"),
-    col("datasetB.id").alias("idB"),
-    col("JaccardDistance")).show(1000)
-
-  System.exit(0)
   println("save graph")
   val neo = Neo4j(sc)
-  println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",("CONTAINS","page"),Some("Page","id"),Some("Page","id"),merge = true))
+  println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(""+System.currentTimeMillis(),"page"),Some("Page","id"),Some("Page","id"),merge = true))
 
 
 }
