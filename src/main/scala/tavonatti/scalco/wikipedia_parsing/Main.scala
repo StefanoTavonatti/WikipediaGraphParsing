@@ -5,6 +5,7 @@ import java.util
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.lib.PageRank
 import org.apache.spark.graphx.{Edge, Graph, VertexId}
+import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, StopWordsRemover, Tokenizer}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.storage.StorageLevel
@@ -96,6 +97,22 @@ object Main extends App {
 
   val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
+  val tokenizer = new Tokenizer().setInputCol("temp").setOutputCol("tokens")
+  val rawTemp = df.withColumn("temp", $"revision.text._VALUE")
+  val tokenized = tokenizer.transform(rawTemp)
+
+  val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("tokenClean")
+  val removed = remover.transform(tokenized)
+
+  val cvModel: CountVectorizerModel = new CountVectorizer()
+    .setInputCol("tokenClean")
+    .setOutputCol("frequencyVector")
+    .setMinDF(1)
+    .fit(removed)
+
+  cvModel.transform(removed).select("title", "frequencyVector").show(false)
+
+  System.exit(0)
   println("save graph")
   val neo = Neo4j(sc)
   println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",("CONTAINS","page"),Some("Page","id"),Some("Page","id"),merge = true))
