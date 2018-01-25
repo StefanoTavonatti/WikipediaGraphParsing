@@ -1,6 +1,9 @@
 package tavonatti.scalco.wikipedia_parsing
 
 import org.apache.spark.graphx.Graph
+import org.apache.spark.ml.feature._
+import org.apache.spark.sql.{Dataset, Row}
+import tavonatti.scalco.wikipedia_parsing.Main.df
 
 object Utils {
 
@@ -22,6 +25,42 @@ object Utils {
       "    </edges>\n" +
       "  </graph>\n" +
       "</gexf>"
+  }
+
+  def tokenizeAndClean(df:Dataset[Row]):Dataset[Row]={
+    val tokenizer = new Tokenizer().setInputCol("text").setOutputCol("tokens")
+    val tokenized = tokenizer.transform(df)
+
+    val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("tokenClean")
+    val removed = remover.transform(tokenized)
+
+    val cvModel: CountVectorizerModel = new CountVectorizer()
+      .setInputCol("tokenClean")
+      .setOutputCol("frequencyVector")
+      .setMinDF(1)
+      .fit(removed)
+
+    val freq=cvModel.transform(removed)
+
+    return freq
+  }
+
+  @Deprecated
+  def computeSimilarity(page1:Dataset[Row],page2:Dataset[Row] ):String ={
+
+
+    val mh = new MinHashLSH()
+      .setNumHashTables(5)
+      .setInputCol("frequencyVector")
+      .setOutputCol("hashes")
+
+    val model=mh.fit(page1)
+
+    model.approxSimilarityJoin(page1, page2,0, "JaccardDistance").show(100)
+    /*.select(col("datasetA.id").alias("idA"),
+      col("datasetB.id").alias("idB"),
+      col("JaccardDistance")).show(100)*/
+    ""
   }
 
 }

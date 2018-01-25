@@ -5,8 +5,9 @@ import java.util
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.lib.PageRank
 import org.apache.spark.graphx.{Edge, Graph, VertexId}
-import org.apache.spark.ml.feature.{CountVectorizer, CountVectorizerModel, StopWordsRemover, Tokenizer}
+import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.storage.StorageLevel
 import org.neo4j.driver.v1.{AuthTokens, GraphDatabase}
@@ -97,20 +98,18 @@ object Main extends App {
 
   val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
-  val tokenizer = new Tokenizer().setInputCol("temp").setOutputCol("tokens")
-  val rawTemp = df.withColumn("temp", $"revision.text._VALUE")
-  val tokenized = tokenizer.transform(rawTemp)
+  val dfClean=Utils.tokenizeAndClean(df.withColumn("text",$"revision.text._VALUE"))
 
-  val remover = new StopWordsRemover().setInputCol("tokens").setOutputCol("tokenClean")
-  val removed = remover.transform(tokenized)
+  val mh = new MinHashLSH()
+    .setNumHashTables(5)
+    .setInputCol("frequencyVector")
+    .setOutputCol("hashes")
 
-  val cvModel: CountVectorizerModel = new CountVectorizer()
-    .setInputCol("tokenClean")
-    .setOutputCol("frequencyVector")
-    .setMinDF(1)
-    .fit(removed)
+  val model=mh.fit(dfClean)
 
-  cvModel.transform(removed).select("title", "frequencyVector").show(false)
+  model.approxSimilarityJoin(dfClean, dfClean,1, "JaccardDistance").select(col("datasetA.id").alias("idA"),
+    col("datasetB.id").alias("idB"),
+    col("JaccardDistance")).show(1000)
 
   System.exit(0)
   println("save graph")
