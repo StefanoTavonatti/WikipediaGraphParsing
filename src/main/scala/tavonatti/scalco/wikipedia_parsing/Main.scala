@@ -99,12 +99,6 @@ object Main extends App {
   println("save graph")
   val neo = Neo4j(sc)
   println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",("CONTAINS","page"),Some("Page","id"),Some("Page","id"),merge = true))
-  //println(neo.saveGraph(pageGraph,"page_name",Pattern(NameProp("Page","id"),Seq(NameProp("CONTAINS","page")),NameProp("Page","id")),merge = true))
-  //println(Utils.toGexf(pageGraph))
-
-
-
-
 
 
 }
