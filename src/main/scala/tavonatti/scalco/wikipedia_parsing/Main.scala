@@ -8,12 +8,13 @@ import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.{SparkSession, functions}
+import org.apache.spark.sql.{SQLContext, SparkSession, functions}
 import org.apache.spark.storage.StorageLevel
 import org.neo4j.driver.v1.{AuthTokens, GraphDatabase}
 import org.neo4j.spark.Neo4j.{NameProp, Pattern}
 import org.neo4j.spark.Neo4jGraph
 import org.neo4j.spark._
+import org.apache.spark.sql.functions.udf
 
 import scala.util.matching.Regex
 import tavonatti.scalco.wikipedia_parsing.Utils
@@ -40,6 +41,14 @@ object Main extends App {
 
   val sc=spark.sparkContext
 
+  def lowerRemoveAllWhitespace(s: String): String = {
+    s.toLowerCase().replaceAll("[^\\w\\s]", "")
+  }
+
+  val lowerRemoveAllWhitespaceUDF = udf[String, String](lowerRemoveAllWhitespace)
+
+  spark.udf.register("lowerRemoveAllWhitespaceUDF",lowerRemoveAllWhitespaceUDF)
+
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
@@ -52,10 +61,10 @@ object Main extends App {
 
   //df.printSchema()
 
-  val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), functions.lower(col("textLowerAndUpper")).as("text")))
+  val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllWhitespaceUDF(col("textLowerAndUpper")).as("text")))
 
   dfClean.show()
-  System.exit(0)
+
 
   val mh = new MinHashLSH()
     .setNumHashTables(50)
@@ -125,7 +134,9 @@ object Main extends App {
 
   println("save graph")
   val neo = Neo4j(sc)
-  println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(""+System.currentTimeMillis(),"page"),Some("Page","id"),Some("Page","id"),merge = true))
+  val link_name=""+System.currentTimeMillis()
+  println("Link name: "+link_name)
+  println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
 
 
 }
