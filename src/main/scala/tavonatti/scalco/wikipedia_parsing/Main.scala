@@ -52,10 +52,13 @@ object Main extends App {
 
   //df.printSchema()
 
-  val dfClean=Utils.tokenizeAndClean(df.withColumn("text",$"revision.text._VALUE"))
+  val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), functions.lower(col("textLowerAndUpper")).as("text")))
+
+  dfClean.show()
+  System.exit(0)
 
   val mh = new MinHashLSH()
-    .setNumHashTables(5)
+    .setNumHashTables(50)
     .setInputCol("frequencyVector")
     .setOutputCol("hashes")
 
