@@ -33,3 +33,4 @@ build
 
 spark-warehouse/
 outputs/
+samples/pages.xml
