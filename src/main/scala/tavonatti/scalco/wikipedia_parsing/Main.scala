@@ -1,6 +1,8 @@
 package tavonatti.scalco.wikipedia_parsing
 
+import java.text.SimpleDateFormat
 import java.util
+import java.util.Date
 
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.lib.PageRank
@@ -15,9 +17,12 @@ import org.neo4j.spark.Neo4j.{NameProp, Pattern}
 import org.neo4j.spark.Neo4jGraph
 import org.neo4j.spark._
 import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.functions.{max, min}
 
 import scala.util.matching.Regex
 import tavonatti.scalco.wikipedia_parsing.Utils
+
+import scala.collection.mutable
 
 object Main extends App {
 
@@ -52,7 +57,7 @@ object Main extends App {
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
-    .load("samples/Wikipedia-20180116144701.xml")
+    .load("samples/pages.xml")
 
   import spark.implicits._
   import scala.collection.JavaConverters._
@@ -60,6 +65,28 @@ object Main extends App {
   df.persist(StorageLevel.MEMORY_AND_DISK)
 
   //df.printSchema()
+
+  /*search first revision date in the dataset*/
+  val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
+  val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
+    row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
+  }).map(elemt=>{
+    format.parse(elemt)
+  })
+
+  val first=timestampRdd.reduce((d1,d2)=>{
+    if(d1.getTime<d2.getTime){
+      d1
+    }
+    else {
+      d2
+    }
+  })
+
+  println(first)
+
+  System.exit(0)
 
   val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllWhitespaceUDF(col("textLowerAndUpper")).as("text")))
 
