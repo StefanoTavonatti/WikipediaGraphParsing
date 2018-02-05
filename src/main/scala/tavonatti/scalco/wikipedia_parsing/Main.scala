@@ -26,6 +26,8 @@ import scala.collection.mutable
 
 object Main extends App {
 
+  val startTime:Long=System.currentTimeMillis()
+
   println("history: Wikipedia-20180116134419.xml")
   println("current: Wikipedia-20180116144701.xml")
 
@@ -41,7 +43,7 @@ object Main extends App {
     .builder()
     .appName("Spark SQL basic example")
     .master("local[*]")
-      .config(conf)
+    .config(conf)
     .getOrCreate()
 
   val sc=spark.sparkContext
@@ -69,12 +71,28 @@ object Main extends App {
   /*search first revision date in the dataset*/
   val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
+  /*find the minumum for every page*/
   val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
-    row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
-  }).map(elemt=>{
-    format.parse(elemt)
+    val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
+
+    /*if the array is empty return the iterator*/
+    if(!it.hasNext){
+      it
+    }
+
+    var min: Date = format.parse(it.next())
+
+    while (it.hasNext){
+      val temp:Date=format.parse(it.next());
+      if(temp.getTime<min.getTime){
+        min=temp
+      }
+    }
+
+    mutable.Seq[Date] {min}.iterator
   })
 
+  /*find the global minimum*/
   val first=timestampRdd.reduce((d1,d2)=>{
     if(d1.getTime<d2.getTime){
       d1
@@ -165,5 +183,6 @@ object Main extends App {
   println("Link name: "+link_name)
   println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
 
+  println("Execution time: "+((System.currentTimeMillis()-startTime)/1000))
 
 }
