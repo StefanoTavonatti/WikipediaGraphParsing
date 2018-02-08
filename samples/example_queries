@@ -9,3 +9,9 @@ Pizza --> Backing stone
 MATCH d=(p:Page)-[:CONTAINS]-(n:Page) WHERE p.page_name = "Pizza" AND n.page_name="Baking stone"  return d
 
 MATCH p=()-[r:`1516973150168`]->()  WHERE r.page <> "NaN" RETURN p
+
+MATCH (p:Page{pageId:9240685}),(p2:Page{pageId:44123864})
+CREATE (p)-[:CONTAINS{since:"today"}]->(p2)
+
+MATCH (n)
+DETACH DELETE n
