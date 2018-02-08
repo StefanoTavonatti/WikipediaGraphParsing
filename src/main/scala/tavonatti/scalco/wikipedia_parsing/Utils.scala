@@ -1,10 +1,12 @@
 package tavonatti.scalco.wikipedia_parsing
 
+import org.apache.spark.SparkContext
 import org.apache.spark.graphx.{Graph, VertexRDD}
 import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Row}
-import tavonatti.scalco.wikipedia_parsing.Main.df
+import org.neo4j.spark.Neo4j
+import tavonatti.scalco.wikipedia_parsing.Main.{df, sc}
 
 object Utils {
 
@@ -64,19 +66,6 @@ object Utils {
     ""
   }
 
-  def saveGraph(graph: Graph[String,String]): Unit ={
-    val graph2=graph.mapVertices((vId,data)=>{
-      println(data)
-    })
 
-    //TODO save edges in another function
-
-    val graph3=graph.mapEdges(edge=>{
-      println(edge.attr)
-    })
-
-    println(graph2.vertices.count())
-
-  }
 
 }

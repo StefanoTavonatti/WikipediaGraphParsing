@@ -59,7 +59,8 @@ object Main extends App {
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
-    .load("samples/pages.xml")
+    //.load("samples/pages.xml")
+      .load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
   import scala.collection.JavaConverters._
@@ -72,7 +73,7 @@ object Main extends App {
   val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
   /*find the minumum for every page*/
-  val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
+  /*val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
     val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
 
     /*if the array is empty return the iterator*/
@@ -90,10 +91,10 @@ object Main extends App {
     }
 
     mutable.Seq[Date] {min}.iterator
-  })
+  })*/
 
   /*find the global minimum*/
-  val first=timestampRdd.reduce((d1,d2)=>{
+  /*val first=timestampRdd.reduce((d1,d2)=>{
     if(d1.getTime<d2.getTime){
       d1
     }
@@ -102,9 +103,9 @@ object Main extends App {
     }
   })
 
-  println(first)
+  println(first)*/
 
-  System.exit(0)
+ // System.exit(0)
 
   val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllWhitespaceUDF(col("textLowerAndUpper")).as("text")))
 
@@ -176,12 +177,39 @@ object Main extends App {
 
   val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
+  val neo = Neo4j(sc)
+  def saveGraph(graph: Graph[String,String]): Unit ={
+    val vertices=saveNodes(graph)
+    val edges=saveEdges(graph)
+
+    (vertices,edges)
+  }
+
+  def saveNodes(graph: Graph[String,String]):Long={
+
+    val graph2=graph.mapVertices((vId,data)=>{
+
+     neo.cypher("CREATE (p:Page{title:\""+data+"\", pageId:+"+vId+"})").loadRowRdd.count()
+    })
+
+    graph2.vertices.count()
+  }
+
+  def saveEdges(graph: Graph[String,String]): Unit={
+
+    val graph2=graph.mapEdges(edge=>{
+
+    })
+
+    graph2.vertices.count()
+  }
 
   println("save graph")
-  val neo = Neo4j(sc)
   val link_name=""+System.currentTimeMillis()
   println("Link name: "+link_name)
-  println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
+  //println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
+
+  println(saveGraph(pageGraph))
 
   println("Execution time: "+((System.currentTimeMillis()-startTime)/1000))
 
