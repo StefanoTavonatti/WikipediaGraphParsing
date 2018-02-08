@@ -48,19 +48,24 @@ object Main extends App {
 
   val sc=spark.sparkContext
 
-  def lowerRemoveAllWhitespace(s: String): String = {
-    s.toLowerCase().replaceAll("[^\\w\\s]", "")
+  def lowerRemoveAllSpecialChars(s: String): String = {
+    if(s!=null) {
+      s.toLowerCase().replaceAll("[^\\w\\s]", "")
+    }
+    else{
+      ""
+    }
   }
 
-  val lowerRemoveAllWhitespaceUDF = udf[String, String](lowerRemoveAllWhitespace)
+  val lowerRemoveAllSpecialCharsUDF = udf[String, String](lowerRemoveAllSpecialChars)
 
-  spark.udf.register("lowerRemoveAllWhitespaceUDF",lowerRemoveAllWhitespaceUDF)
+  spark.udf.register("lowerRemoveAllSpecialCharsUDF",lowerRemoveAllSpecialCharsUDF)
 
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
-    //.load("samples/pages.xml")
-      .load("samples/Wikipedia-20180116144701.xml")
+    .load("samples/pages.xml")
+    //  .load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
   import scala.collection.JavaConverters._
@@ -73,7 +78,7 @@ object Main extends App {
   val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
   /*find the minumum for every page*/
-  /*val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
+  val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
     val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
 
     /*if the array is empty return the iterator*/
@@ -91,10 +96,10 @@ object Main extends App {
     }
 
     mutable.Seq[Date] {min}.iterator
-  })*/
+  })
 
   /*find the global minimum*/
-  /*val first=timestampRdd.reduce((d1,d2)=>{
+  val first=timestampRdd.reduce((d1,d2)=>{
     if(d1.getTime<d2.getTime){
       d1
     }
@@ -103,14 +108,30 @@ object Main extends App {
     }
   })
 
-  println(first)*/
+  println(first)
 
- // System.exit(0)
+  val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
+    /*
+    creating a node with the id of the page and the title
+     */
+    (n.get(0).asInstanceOf[Long],n.get(1).toString)
+  })
 
-  val dfClean=Utils.tokenizeAndClean(df.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllWhitespaceUDF(col("textLowerAndUpper")).as("text")))
+  nodes.cache()
 
-  dfClean.show()
 
+  val revisions=df.select(df.col("id"),df.col("title"),functions.explode(functions.col("revision")).as("revision")) //df.sqlContext.sql("select id,title,revision.timestamp,explode(revision.text._VALUE) from data") //
+
+  /*df is no longer needed, so remove it from cache*/
+  df.unpersist()
+
+  val dfClean=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text")))
+  dfClean.cache()
+
+  dfClean.printSchema()
+  println("write to json..")
+
+  System.exit(0)
 
   val mh = new MinHashLSH()
     .setNumHashTables(50)
@@ -127,12 +148,7 @@ object Main extends App {
 
   jaccardTable.printSchema()
 
-  val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
-    /*
-    creating a node with the id of the page and the title
-     */
-    (n.get(0).asInstanceOf[Long],n.get(1).toString)
-  })
+
 
   val links=df.select("id","title","revision.text._VALUE").rdd.map(r=>{
 
