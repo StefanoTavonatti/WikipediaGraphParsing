@@ -23,10 +23,13 @@ import scala.util.matching.Regex
 import tavonatti.scalco.wikipedia_parsing.Utils
 
 import scala.collection.mutable
+import scala.reflect.macros.whitebox
 
 object Main extends App {
 
   val startTime:Long=System.currentTimeMillis()
+
+  val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
   println("history: Wikipedia-20180116134419.xml")
   println("current: Wikipedia-20180116144701.xml")
@@ -57,9 +60,20 @@ object Main extends App {
     }
   }
 
+  def stringToTimestamp(s:String): Long={
+    if(s!=null){
+      format.parse(s).getTime()
+    }
+    else {
+      0
+    }
+  }
+
   val lowerRemoveAllSpecialCharsUDF = udf[String, String](lowerRemoveAllSpecialChars)
+  val stringToTimestampUDF= udf[Long,String](stringToTimestamp)
 
   spark.udf.register("lowerRemoveAllSpecialCharsUDF",lowerRemoveAllSpecialCharsUDF)
+  spark.udf.register("stringToTimestampUDF",stringToTimestampUDF)
 
   val df = spark.read
     .format("com.databricks.spark.xml")
@@ -72,10 +86,9 @@ object Main extends App {
 
   df.persist(StorageLevel.MEMORY_AND_DISK)
 
-  //df.printSchema()
 
   /*search first revision date in the dataset*/
-  val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+
 
   /*find the minumum for every page*/
   val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
@@ -125,11 +138,15 @@ object Main extends App {
   /*df is no longer needed, so remove it from cache*/
   df.unpersist()
 
-  val dfClean=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text")))
+  /*tokenize and clean the dataset*/
+  val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text")))
+
+  /*convert the timestamp from a date string to a long value*/
+  val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp")))
   dfClean.cache()
 
   dfClean.printSchema()
-  println("write to json..")
+  dfClean.show()
 
   System.exit(0)
 
