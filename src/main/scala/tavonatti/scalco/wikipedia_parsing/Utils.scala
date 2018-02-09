@@ -6,7 +6,7 @@ import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Row}
 import org.neo4j.spark.Neo4j
-import tavonatti.scalco.wikipedia_parsing.Main.{df, sc}
+import tavonatti.scalco.wikipedia_parsing.Main.{df, format, sc}
 
 object Utils {
 
@@ -67,5 +67,33 @@ object Utils {
   }
 
 
+  /**
+    * UDF function for clean up the text of the revisions.
+    * this function remove all the special chars and convert the text to lowercase.
+    * @param s
+    * @return
+    */
+  def lowerRemoveAllSpecialChars(s: String): String = {
+    if(s!=null) {
+      s.toLowerCase().replaceAll("[^\\w\\s]", "")
+    }
+    else{
+      ""
+    }
+  }
+
+  /**
+    * UDF function witch converts the date revision from the string form to a long timestamp
+    * @param s
+    * @return
+    */
+  def stringToTimestamp(s:String): Long={
+    if(s!=null){
+      format.parse(s).getTime()
+    }
+    else {
+      0
+    }
+  }
 
 }

@@ -51,26 +51,10 @@ object Main extends App {
 
   val sc=spark.sparkContext
 
-  def lowerRemoveAllSpecialChars(s: String): String = {
-    if(s!=null) {
-      s.toLowerCase().replaceAll("[^\\w\\s]", "")
-    }
-    else{
-      ""
-    }
-  }
 
-  def stringToTimestamp(s:String): Long={
-    if(s!=null){
-      format.parse(s).getTime()
-    }
-    else {
-      0
-    }
-  }
 
-  val lowerRemoveAllSpecialCharsUDF = udf[String, String](lowerRemoveAllSpecialChars)
-  val stringToTimestampUDF= udf[Long,String](stringToTimestamp)
+  val lowerRemoveAllSpecialCharsUDF = udf[String, String](Utils.lowerRemoveAllSpecialChars)
+  val stringToTimestampUDF= udf[Long,String](Utils.stringToTimestamp)
 
   spark.udf.register("lowerRemoveAllSpecialCharsUDF",lowerRemoveAllSpecialCharsUDF)
   spark.udf.register("stringToTimestampUDF",stringToTimestampUDF)
