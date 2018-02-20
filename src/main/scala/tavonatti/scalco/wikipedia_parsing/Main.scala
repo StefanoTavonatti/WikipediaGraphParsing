@@ -62,7 +62,8 @@ object Main extends App {
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
-    .load("samples/pages.xml")
+    //.load("samples/pages.xml")
+    .load("samples/Wikipedia-20180220091437.xml")//1000 revisions
     //  .load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
@@ -130,9 +131,9 @@ object Main extends App {
   dfClean.cache()
 
   dfClean.printSchema()
-  dfClean.show()
+  //dfClean.show()
 
-  System.exit(0)
+  //System.exit(0)
 
   val mh = new MinHashLSH()
     .setNumHashTables(50)
@@ -178,7 +179,7 @@ object Main extends App {
       val title=it.next();
       val temp=df.filter(functions.lower(df.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
       if(temp.size()>0) {
-        val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]
+        val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]//TODO jaccard table computation here
         val sim=jaccardTable.filter(col("idA").equalTo(link._1).and(col("idB").equalTo(idEdge))).select("JaccardDistance").collect()
         var link_value = "NaN"
         if(sim.length>0){
@@ -232,7 +233,7 @@ object Main extends App {
   println("save graph")
   val link_name:Long=System.currentTimeMillis()
   println("Link name: "+link_name)
-  //println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
+  //println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(""+link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
 
   println(saveGraph(pageGraph,"_"+link_name.toString))
 
