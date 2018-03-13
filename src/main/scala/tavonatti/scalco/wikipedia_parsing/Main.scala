@@ -141,8 +141,33 @@ object Main extends App {
 
     println(currentDate)
     val currentDF=dfClean.filter(functions.col("timestampLong").leq(currentDate.getTime)).groupBy(col("id"),col("title")).max("timestampLong")//
-    currentDF.coalesce(1).write.json("outputs/partitions/"+currentDate.toString)
-    //System.exit(0)
+    //currentDF.coalesce(1).write.json("outputs/partitions/"+currentDate.toString)
+
+    val links=currentDF.rdd.map(r=>{//dfClean.select("id","title","text")
+
+      val sourcePage=dfClean.filter(col("id").equalTo(r.get(0)).and(col("timestampLong").equalTo(r.get(2))))
+          .select("text").collect().head
+      val text:String=sourcePage.get(0).asInstanceOf[String]
+
+      if(text==null){
+        (r.get(0),new util.TreeSet[String]())
+      }
+      else {
+        val list = new util.TreeSet[String]();
+        val pattern = new Regex("\\[\\[[\\w|\\s]+\\]\\]")
+
+        val iterator=pattern.findAllIn(text.toString)
+
+        while(iterator.hasNext){
+          val temp=iterator.next()
+          list.add(temp.replaceAll("\\[\\[","").replaceAll("\\]\\]",""))
+        }
+
+        (r.get(0),r.get(1),list)
+      }
+    })
+
+    links.coalesce(1).saveAsTextFile("outputs/links/"+currentDate.toString)
 
     /*get next month*/
     val calendar:Calendar=Calendar.getInstance()
@@ -159,45 +184,10 @@ object Main extends App {
   System.exit(0)
 
 
-  //System.exit(0)
-
-  /*val mh = new MinHashLSH()
-    .setNumHashTables(50)
-    .setInputCol("frequencyVector")
-    .setOutputCol("hashes")
-
-  val model=mh.fit(dfClean)
-
-  val jaccardTable=model.approxSimilarityJoin(dfClean, dfClean,1, "JaccardDistance").select(col("datasetA.id").alias("idA"),
-    col("datasetB.id").alias("idB"),
-    col("JaccardDistance"))
-
-  jaccardTable.cache()
-
-  jaccardTable.printSchema()*/
 
 
-  val links=dfClean.select("id","title","text").rdd.map(r=>{
 
-    if(r.get(2)==null){
-      (r.get(0),new util.TreeSet[String]())
-    }
-    else {
-      val list = new util.TreeSet[String]();
-      val pattern = new Regex("\\[\\[[\\w|\\s]+\\]\\]")
-
-      val iterator=pattern.findAllIn(r.get(2).toString)
-
-      while(iterator.hasNext){
-        val temp=iterator.next()
-        list.add(temp.replaceAll("\\[\\[","").replaceAll("\\]\\]",""))
-      }
-
-      (r.get(0),list)
-    }
-  })
-
-  println("links: "+links.count())
+  /*println("links: "+links.count())
 
   val edges: RDD[Edge[String]]=links.flatMap(link=>{
     val it=link._2.iterator()
@@ -270,5 +260,5 @@ object Main extends App {
 
   println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
   println(pageGraph.edges.count())
-
+*/
 }
