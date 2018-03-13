@@ -84,12 +84,14 @@ object Main extends App {
       it
     }
 
-    var min: Date = format.parse(it.next())
+    var min: Date = new Date(System.currentTimeMillis()+1000)
 
     while (it.hasNext){
-      val temp:Date=format.parse(it.next());
-      if(temp.getTime<min.getTime){
-        min=temp
+      if(it!=null && !it.equals("")) {
+        val temp: Date = format.parse(it.next());
+        if (temp.getTime < min.getTime) {
+          min = temp
+        }
       }
     }
 
@@ -124,10 +126,10 @@ object Main extends App {
   df.unpersist()
 
   /*tokenize and clean the dataset*/
-  val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text")))
+  val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("title"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text_clean"),col("textLowerAndUpper").as("text")))
 
   /*convert the timestamp from a date string to a long value*/
-  val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp")))
+  val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
   dfClean.cache()
 
   dfClean.printSchema()
@@ -135,7 +137,7 @@ object Main extends App {
 
   //System.exit(0)
 
-  val mh = new MinHashLSH()
+  /*val mh = new MinHashLSH()
     .setNumHashTables(50)
     .setInputCol("frequencyVector")
     .setOutputCol("hashes")
@@ -148,11 +150,10 @@ object Main extends App {
 
   jaccardTable.cache()
 
-  jaccardTable.printSchema()
+  jaccardTable.printSchema()*/
 
 
-
-  val links=df.select("id","title","revision.text._VALUE").rdd.map(r=>{
+  val links=dfClean.select("id","title","text").rdd.map(r=>{
 
     if(r.get(2)==null){
       (r.get(0),new util.TreeSet[String]())
@@ -172,14 +173,19 @@ object Main extends App {
     }
   })
 
+  println("links: "+links.count())
+
   val edges: RDD[Edge[String]]=links.flatMap(link=>{
     val it=link._2.iterator()
     val edgeList=new util.ArrayList[Edge[String]]()
     while (it.hasNext){
-      val title=it.next();
-      val temp=df.filter(functions.lower(df.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
+      val title=it.next();//TODO df
+      val temp=dfClean.filter(functions.lower(dfClean.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
       if(temp.size()>0) {
         val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]//TODO jaccard table computation here
+
+        val dfTemp=dfClean.filter(col("id").equalTo(link._1).or(col("id").equalTo(idEdge)));
+        val jaccardTable=Utils.computeMinhash(dfTemp);
         val sim=jaccardTable.filter(col("idA").equalTo(link._1).and(col("idB").equalTo(idEdge))).select("JaccardDistance").collect()
         var link_value = "NaN"
         if(sim.length>0){
@@ -208,7 +214,7 @@ object Main extends App {
 
     println("saving nodes...")
     val graph2=graph.mapVertices((vId,data)=>{
-
+      println("node: "+data)
      neo.cypher("CREATE (p:Page{title:\""+data+"\", pageId:+"+vId+"})").loadRowRdd.count()
     })
 
@@ -222,6 +228,7 @@ object Main extends App {
 
     println("saving edges...")
     val graph2=graph.mapEdges(edge=>{
+      println("edge: "+edge.srcId.toString+" "+edge.dstId.toString)
       val query="MATCH (p:Page{pageId:"+edge.srcId.toString+"}),(p2:Page{pageId:"+edge.dstId.toString+"})"+
         "\nCREATE (p)-[:"+linkName+"{page_src:\""+edge.attr+"\"}]->(p2)"
       neo.cypher(query).loadRowRdd.count()
@@ -237,6 +244,7 @@ object Main extends App {
 
   println(saveGraph(pageGraph,"_"+link_name.toString))
 
-  println("Execution time: "+((System.currentTimeMillis()-startTime)/1000))
+  println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
+  println(pageGraph.edges.count())
 
 }
