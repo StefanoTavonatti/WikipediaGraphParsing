@@ -10,7 +10,7 @@ import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.{SQLContext, SparkSession, functions}
+import org.apache.spark.sql.{Dataset, SQLContext, SparkSession, functions}
 import org.apache.spark.storage.StorageLevel
 import org.neo4j.driver.v1.{AuthTokens, GraphDatabase}
 import org.neo4j.spark.Neo4j.{NameProp, Pattern}
@@ -119,28 +119,7 @@ object Main extends App {
 
   nodes.cache()
 
-  var current:Date =first;
-  var dates:mutable.Seq[Date]=new Array[Date](0)
-
-  while (current.getTime < System.currentTimeMillis()){
-
-
-
-    /*get next month*/
-    val calendar:Calendar=Calendar.getInstance()
-    calendar.setTime(current)
-    calendar.add(Calendar.MONTH,1)
-    current=calendar.getTime()
-    dates++=Seq(current)
-  }
-
-  //TODO to REMOVE
-  val datesRDD:RDD[Date]=sc.parallelize[Date](dates)
-
-
-  System.exit(0)
-
-  val revisions=df.select(df.col("id"),df.col("title"),functions.explode(functions.col("revision")).as("revision")) //df.sqlContext.sql("select id,title,revision.timestamp,explode(revision.text._VALUE) from data") //
+  val revisions=df.select(df.col("id"),df.col("title"),functions.explode(functions.col("revision")).as("revision"))
 
   /*df is no longer needed, so remove it from cache*/
   df.unpersist()
@@ -154,6 +133,31 @@ object Main extends App {
 
   dfClean.printSchema()
   //dfClean.show()
+
+  var currentDate:Date =first;
+  var dates:mutable.Seq[Date]=new Array[Date](0)
+
+  while (currentDate.getTime < System.currentTimeMillis()){
+
+    println(currentDate)
+    val currentDF=dfClean.filter(functions.col("timestampLong").leq(currentDate.getTime)).groupBy(col("id"),col("title")).max("timestampLong")//
+    currentDF.coalesce(1).write.json("outputs/partitions/"+currentDate.toString)
+    //System.exit(0)
+
+    /*get next month*/
+    val calendar:Calendar=Calendar.getInstance()
+    calendar.setTime(currentDate)
+    calendar.add(Calendar.MONTH,1)
+    currentDate=calendar.getTime()
+    dates++=Seq(currentDate)
+  }
+
+  //TODO to REMOVE
+  val datesRDD:RDD[Date]=sc.parallelize[Date](dates)
+
+
+  System.exit(0)
+
 
   //System.exit(0)
 
