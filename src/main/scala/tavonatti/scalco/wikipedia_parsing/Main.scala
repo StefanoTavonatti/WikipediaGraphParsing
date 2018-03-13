@@ -2,7 +2,7 @@ package tavonatti.scalco.wikipedia_parsing
 
 import java.text.SimpleDateFormat
 import java.util
-import java.util.Date
+import java.util.{Calendar, Date}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.lib.PageRank
@@ -119,6 +119,26 @@ object Main extends App {
 
   nodes.cache()
 
+  var current:Date =first;
+  var dates:mutable.Seq[Date]=new Array[Date](0)
+
+  while (current.getTime < System.currentTimeMillis()){
+
+
+
+    /*get next month*/
+    val calendar:Calendar=Calendar.getInstance()
+    calendar.setTime(current)
+    calendar.add(Calendar.MONTH,1)
+    current=calendar.getTime()
+    dates++=Seq(current)
+  }
+
+  //TODO to REMOVE
+  val datesRDD:RDD[Date]=sc.parallelize[Date](dates)
+
+
+  System.exit(0)
 
   val revisions=df.select(df.col("id"),df.col("title"),functions.explode(functions.col("revision")).as("revision")) //df.sqlContext.sql("select id,title,revision.timestamp,explode(revision.text._VALUE) from data") //
 
