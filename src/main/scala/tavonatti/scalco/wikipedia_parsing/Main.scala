@@ -125,7 +125,7 @@ object Main extends App {
   df.unpersist()
 
   /*tokenize and clean the dataset*/
-  val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("title"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text_clean"),col("textLowerAndUpper").as("text")))
+  val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("title"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text_clean"),col("textLowerAndUpper").as("text"),col("revision.id").as("revision_id")))
 
   /*convert the timestamp from a date string to a long value*/
   val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
@@ -137,17 +137,28 @@ object Main extends App {
   var currentDate:Date =first;
   var dates:mutable.Seq[Date]=new Array[Date](0)
 
+  /*
+   * compute the graph for every month
+   */
   while (currentDate.getTime < System.currentTimeMillis()){
 
     println(currentDate)
+    /*
+    *get the latest revision for current month
+    */
     val currentDF=dfClean.filter(functions.col("timestampLong").leq(currentDate.getTime)).groupBy(col("id"),col("title")).max("timestampLong")//
     //currentDF.coalesce(1).write.json("outputs/partitions/"+currentDate.toString)
 
+    /*
+    * compute the links for current month
+    */
     val links=currentDF.rdd.map(r=>{//dfClean.select("id","title","text")
 
+      //retrieve the text and the id of the current revision
       val sourcePage=dfClean.filter(col("id").equalTo(r.get(0)).and(col("timestampLong").equalTo(r.get(2))))
-          .select("text").collect().head
+          .select("text","revision_id").collect().head
       val text:String=sourcePage.get(0).asInstanceOf[String]
+      val revisionId=sourcePage.get(1).asInstanceOf[Long]
 
       if(text==null){
         (r.get(0),new util.TreeSet[String]())
@@ -163,11 +174,52 @@ object Main extends App {
           list.add(temp.replaceAll("\\[\\[","").replaceAll("\\]\\]",""))
         }
 
-        (r.get(0),r.get(1),list)
+        ((r.get(0),revisionId),list) //((source_id,revision_id),[list of links])
       }
     })
 
-    links.coalesce(1).saveAsTextFile("outputs/links/"+currentDate.toString)
+    //links.coalesce(1).saveAsTextFile("outputs/links1/"+currentDate.toString)
+
+
+    val edges: RDD[Edge[String]]=links.flatMap(link=>{
+      val it=link._2.iterator()
+      val edgeList=new util.ArrayList[Edge[String]]()
+      while (it.hasNext){
+        val title=it.next();
+        val temp=dfClean.filter(functions.lower(dfClean.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
+
+        if(temp.size()>0) {
+          val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]
+
+          val dfTemp=dfClean.filter(col("id").equalTo(link._1.asInstanceOf[(Long,Long)]._1).or(col("id").equalTo(idEdge)))
+            .filter(col("timestampLong").leq(currentDate.getTime))
+            .groupBy(col("id"),col("title")).max("timestampLong").collectAsList();
+
+          if(dfTemp.size()<2){
+            println("skip loop")
+          }
+          else {
+            val dfLatest = dfClean.filter(col("id").equalTo(dfTemp.get(0).get(0)).and(col("timestampLong").equalTo(dfTemp.get(0).get(2)))
+              .or(col("id").equalTo(dfTemp.get(1).get(0)).and(col("timestampLong").equalTo(dfTemp.get(1).get(2)))))
+
+            val jaccardTable = Utils.computeMinhash(dfLatest);
+
+            val sim = jaccardTable.filter(col("idA").equalTo(link._1.asInstanceOf[(Long,Long)]._1).and(col("idB").equalTo(idEdge))).select("JaccardDistance").collect()
+            var link_value = "NaN"
+            if (sim.length > 0) {
+              link_value = "" + sim.head
+            }
+            //println(link_value)
+
+            val e = Edge(link._1.asInstanceOf[(Long,Long)]._1.asInstanceOf[Long], idEdge.asInstanceOf[Long], link_value)
+            edgeList.add(e)
+          }
+        }
+      }
+      (edgeList.asScala.iterator)
+    })
+
+    edges.coalesce(1).saveAsTextFile("outputs/edges_new/"+currentDate.toString)
 
     /*get next month*/
     val calendar:Calendar=Calendar.getInstance()
@@ -181,6 +233,7 @@ object Main extends App {
   val datesRDD:RDD[Date]=sc.parallelize[Date](dates)
 
 
+
   System.exit(0)
 
 
@@ -189,28 +242,7 @@ object Main extends App {
 
   /*println("links: "+links.count())
 
-  val edges: RDD[Edge[String]]=links.flatMap(link=>{
-    val it=link._2.iterator()
-    val edgeList=new util.ArrayList[Edge[String]]()
-    while (it.hasNext){
-      val title=it.next();//TODO df
-      val temp=dfClean.filter(functions.lower(dfClean.col("title")).equalTo(title.toLowerCase)).select("id").collectAsList() //($"title"===title).select("id").collectAsList()
-      if(temp.size()>0) {
-        val idEdge: Long =temp.get(0).get(0).asInstanceOf[Long]//TODO jaccard table computation here
 
-        val dfTemp=dfClean.filter(col("id").equalTo(link._1).or(col("id").equalTo(idEdge)));
-        val jaccardTable=Utils.computeMinhash(dfTemp);
-        val sim=jaccardTable.filter(col("idA").equalTo(link._1).and(col("idB").equalTo(idEdge))).select("JaccardDistance").collect()
-        var link_value = "NaN"
-        if(sim.length>0){
-          link_value=""+sim.head
-        }
-        val e = Edge(link._1.asInstanceOf[Long], idEdge.asInstanceOf[Long], link_value)
-        edgeList.add(e)
-      }
-    }
-    (edgeList.asScala.iterator)
-  })
 
 
   val pageGraph:Graph[String,String] = Graph(nodes, edges)

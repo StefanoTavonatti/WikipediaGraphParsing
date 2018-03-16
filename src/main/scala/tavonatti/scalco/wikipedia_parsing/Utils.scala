@@ -68,7 +68,7 @@ object Utils {
   }
 
   def computeMinhash(ds:Dataset[Row]):Dataset[Row]={
-    
+
     val mh = new MinHashLSH()
       .setNumHashTables(50)
       .setInputCol("frequencyVector")
