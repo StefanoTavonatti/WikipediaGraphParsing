@@ -2,7 +2,7 @@ package tavonatti.scalco.wikipedia_parsing
 
 import java.text.SimpleDateFormat
 import java.util
-import java.util.{Calendar, Date}
+import java.util.{Calendar, Date, GregorianCalendar}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.lib.PageRank
@@ -168,6 +168,19 @@ object Main extends App {
   }
 
 
+  def saveEdges(edges: RDD[Edge[String]],linkName:String): Long={
+
+    println("saving edges...")
+
+    val edges1=edges.map(e=>{
+      val query="MATCH (p:Page{pageId:"+e.srcId.toString+"}),(p2:Page{pageId:"+e.dstId.toString+"})"+
+        "\nCREATE (p)-[:"+linkName+"{page_src:\""+e.attr+"\"}]->(p2)"
+      neo.cypher(query).loadRowRdd.count()
+    })
+
+    return edges1.count()
+  }
+
 
 
   /*********/
@@ -260,6 +273,7 @@ object Main extends App {
     })
 
     //edges.coalesce(1).saveAsTextFile("outputs/edges_new/"+currentDate.toString)
+    println(""+saveEdges(edges,""+new SimpleDateFormat("MMM_YYYY").format(currentDate.getTime()))+" edges saved")
 
     /*get next month*/
     val calendar:Calendar=Calendar.getInstance()
@@ -319,7 +333,8 @@ object Main extends App {
 
     println(saveGraph(pageGraph,"_"+link_name.toString))
 
-    println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
+
     println(pageGraph.edges.count())
   */
+  println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
 }
