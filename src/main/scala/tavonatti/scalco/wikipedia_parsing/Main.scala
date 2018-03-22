@@ -134,6 +134,46 @@ object Main extends App {
   dfClean.printSchema()
   //dfClean.show()
 
+  /*********/
+
+  val neo = Neo4j(sc)
+
+
+  def saveNodes(nodes: RDD[(VertexId,String)]):Long={
+
+    println("saving nodes...")
+
+    val nodes1=nodes.map(n=>{
+      neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
+      n
+    })
+
+
+    println("create index on :Page(pageId)...")
+    neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
+    return nodes1.count()
+  }
+
+  def saveEdges(graph: Graph[String,String],linkName:String): Long={
+
+    println("saving edges...")
+    val graph2=graph.mapEdges(edge=>{
+      println("edge: "+edge.srcId.toString+" "+edge.dstId.toString)
+      val query="MATCH (p:Page{pageId:"+edge.srcId.toString+"}),(p2:Page{pageId:"+edge.dstId.toString+"})"+
+        "\nCREATE (p)-[:"+linkName+"{page_src:\""+edge.attr+"\"}]->(p2)"
+      neo.cypher(query).loadRowRdd.count()
+    })
+
+    return graph2.edges.count()
+  }
+
+
+
+
+  /*********/
+
+  println(""+saveNodes(nodes)+" nodes saved")
+
   var currentDate:Date =first;
   var dates:mutable.Seq[Date]=new Array[Date](0)
 
@@ -219,7 +259,7 @@ object Main extends App {
       (edgeList.asScala.iterator)
     })
 
-    edges.coalesce(1).saveAsTextFile("outputs/edges_new/"+currentDate.toString)
+    //edges.coalesce(1).saveAsTextFile("outputs/edges_new/"+currentDate.toString)
 
     /*get next month*/
     val calendar:Calendar=Calendar.getInstance()
@@ -234,22 +274,19 @@ object Main extends App {
 
 
 
-  System.exit(0)
+  //System.exit(0)
 
 
 
 
 
-  /*println("links: "+links.count())
 
 
 
+  /*
+    val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
-  val pageGraph:Graph[String,String] = Graph(nodes, edges)
-  pageGraph.cache()
-
-  val neo = Neo4j(sc)
-  def saveGraph(graph: Graph[String,String],linkName:String): (Long,Long) ={
+    def saveGraph(graph: Graph[String,String],linkName:String): (Long,Long) ={
     val vertices:Long=saveNodes(graph)
     val edges:Long=saveEdges(graph,linkName)
 
@@ -261,7 +298,7 @@ object Main extends App {
     println("saving nodes...")
     val graph2=graph.mapVertices((vId,data)=>{
       println("node: "+data)
-     neo.cypher("CREATE (p:Page{title:\""+data+"\", pageId:+"+vId+"})").loadRowRdd.count()
+      neo.cypher("CREATE (p:Page{title:\""+data+"\", pageId:+"+vId+"})").loadRowRdd.count()
     })
 
     val verticesCount=graph2.vertices.count()
@@ -270,27 +307,19 @@ object Main extends App {
     return verticesCount
   }
 
-  def saveEdges(graph: Graph[String,String],linkName:String): Long={
 
-    println("saving edges...")
-    val graph2=graph.mapEdges(edge=>{
-      println("edge: "+edge.srcId.toString+" "+edge.dstId.toString)
-      val query="MATCH (p:Page{pageId:"+edge.srcId.toString+"}),(p2:Page{pageId:"+edge.dstId.toString+"})"+
-        "\nCREATE (p)-[:"+linkName+"{page_src:\""+edge.attr+"\"}]->(p2)"
-      neo.cypher(query).loadRowRdd.count()
-    })
 
-    return graph2.edges.count()
-  }
 
-  println("save graph")
-  val link_name:Long=System.currentTimeMillis()
-  println("Link name: "+link_name)
-  //println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(""+link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
+    pageGraph.cache()
 
-  println(saveGraph(pageGraph,"_"+link_name.toString))
+    println("save graph")
+    val link_name:Long=System.currentTimeMillis()
+    println("Link name: "+link_name)
+    //println(Neo4jGraph.saveGraph(sc,pageGraph,"page_name",(""+link_name,"page"),Some("Page","id"),Some("Page","id"),merge = true))
 
-  println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
-  println(pageGraph.edges.count())
-*/
+    println(saveGraph(pageGraph,"_"+link_name.toString))
+
+    println("Execution time: "+((System.currentTimeMillis()-startTime)/1000)+" seconds")
+    println(pageGraph.edges.count())
+  */
 }
