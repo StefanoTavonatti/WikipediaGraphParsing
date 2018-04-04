@@ -27,6 +27,13 @@ import scala.reflect.macros.whitebox
 
 object Main extends App {
 
+  /*
+      ==============================================
+      SPARK CONFIGURATION AND DATA RETRIEVING
+      ==============================================
+   */
+
+
   val startTime:Long=System.currentTimeMillis()
 
   val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -36,12 +43,13 @@ object Main extends App {
 
   //https://en.wikipedia.org/wiki/Wikipedia:Tutorial/Formatting
 
+  /* Configuration parameters for Spark */
   val conf = new SparkConf()
   conf.set("spark.neo4j.bolt.url","bolt://127.0.0.1:7687")
   conf.set("spark.neo4j.bolt.user","neo4j")
   conf.set("spark.neo4j.bolt.password","password")
 
-
+  /* Configures SparkSession and gets the spark context */
   val spark = SparkSession
     .builder()
     .appName("Spark SQL basic example")
@@ -52,19 +60,20 @@ object Main extends App {
   val sc=spark.sparkContext
 
 
-
+  /* Definition and registration of custom user defined functions */
   val lowerRemoveAllSpecialCharsUDF = udf[String, String](Utils.lowerRemoveAllSpecialChars)
   val stringToTimestampUDF= udf[Long,String](Utils.stringToTimestamp)
-
   spark.udf.register("lowerRemoveAllSpecialCharsUDF",lowerRemoveAllSpecialCharsUDF)
   spark.udf.register("stringToTimestampUDF",stringToTimestampUDF)
 
+
+  /* Reads the dataset */
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
     //.load("samples/pages.xml")
-    .load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    //  .load("samples/Wikipedia-20180116144701.xml")
+    //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    .load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
   import scala.collection.JavaConverters._
@@ -72,10 +81,21 @@ object Main extends App {
   df.persist(StorageLevel.MEMORY_AND_DISK)
 
 
+
+  /*
+      ==============================================
+      EXTRACTING MIN DATES
+      BUILDING THE NODES RDDS
+      CLEANING THE DATASET
+      ==============================================
+   */
+
+
+
   /*search first revision date in the dataset*/
 
 
-  /*find the minumum for every page*/
+  /* Finds the minumum for every page */
   val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
     val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
 
@@ -84,12 +104,15 @@ object Main extends App {
       it
     }
 
+    /* This represents the time that is used to check all the other dates */
     var min: Date = new Date(System.currentTimeMillis()+1000)
 
+    /* Iterates through all the dates and checks if a new minimum is found at every iteration*/
     while (it.hasNext){
       if(it!=null && !it.equals("")) {
         val temp: Date = format.parse(it.next());
         if (temp.getTime < min.getTime) {
+          /* New minimum found */
           min = temp
         }
       }
@@ -98,7 +121,8 @@ object Main extends App {
     mutable.Seq[Date] {min}.iterator
   })
 
-  /*find the global minimum*/
+
+  /* Finds the global minimum through a reduce */
   val first=timestampRdd.reduce((d1,d2)=>{
     if(d1.getTime<d2.getTime){
       d1
@@ -110,39 +134,48 @@ object Main extends App {
 
   println(first)
 
+  /* Building RDDs for all the nodes found. The nodes are then cached in memory since they will be used several times */
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
-    /*
-    creating a node with the id of the page and the title
-     */
+
+    /* Creating a node with the id of the page and the title */
     (n.get(0).asInstanceOf[Long],n.get(1).toString)
   })
-
   nodes.cache()
 
+  /* Get all the revisions from the data frame */
   val revisions=df.select(df.col("id"),df.col("title"),functions.explode(functions.col("revision")).as("revision"))
 
-  /*df is no longer needed, so remove it from cache*/
+  /* df is no longer needed, so remove it from cache */
   df.unpersist()
 
-  /*tokenize and clean the dataset*/
+  /* Tokenize and clean the dataset */
   val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("title"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text_clean"),col("textLowerAndUpper").as("text"),col("revision.id").as("revision_id")))
 
-  /*convert the timestamp from a date string to a long value*/
+  /* Convert the timestamp from a date string to a long value */
   val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
   dfClean.cache()
-
   dfClean.printSchema()
   //dfClean.show()
 
   /*********/
 
+  /*
+    ==============================================
+    NEO4J GRAPHS BUILDING
+    ==============================================
+ */
+
+  /* Neo4j instance */
   val neo = Neo4j(sc)
 
 
+
+  /* Saving the nodes in the database */
   def saveNodes(nodes: RDD[(VertexId,String)]):Long={
 
     println("saving nodes...")
 
+    /* Running query to save the nodes */
     val nodes1=nodes.map(n=>{
       neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
       n
@@ -154,9 +187,12 @@ object Main extends App {
     return nodes1.count()
   }
 
+  /* Saving the edges in the database */
   def saveEdges(graph: Graph[String,String],linkName:String): Long={
 
     println("saving edges...")
+
+    /* Running query to save edges */
     val graph2=graph.mapEdges(edge=>{
       println("edge: "+edge.srcId.toString+" "+edge.dstId.toString)
       val query="MATCH (p:Page{pageId:"+edge.srcId.toString+"}),(p2:Page{pageId:"+edge.dstId.toString+"})"+
@@ -190,29 +226,31 @@ object Main extends App {
   var currentDate:Date =first;
   var dates:mutable.Seq[Date]=new Array[Date](0)
 
-  /*
-   * compute the graph for every month
-   */
+
+  /* Compute the graph for every month */
   while (currentDate.getTime < System.currentTimeMillis()){
 
     println(currentDate)
-    /*
-    *get the latest revision for current month
-    */
-    val currentDF=dfClean.filter(functions.col("timestampLong").leq(currentDate.getTime)).groupBy(col("id"),col("title")).max("timestampLong")//
+
+    /* Get the latest revision for current month */
+    val currentDF=dfClean.filter(functions.col("timestampLong")
+                                          .leq(currentDate.getTime))
+                                          .groupBy(col("id"),col("title"))
+                                          .max("timestampLong")//
     //currentDF.coalesce(1).write.json("outputs/partitions/"+currentDate.toString)
 
-    /*
-    * compute the links for current month
-    */
+    /* Compute the links for current month */
     val links=currentDF.rdd.map(r=>{//dfClean.select("id","title","text")
 
-      //retrieve the text and the id of the current revision
-      val sourcePage=dfClean.filter(col("id").equalTo(r.get(0)).and(col("timestampLong").equalTo(r.get(2))))
-          .select("text","revision_id").collect().head
+      /* Retrieve the text and the id of the current revision */
+      val sourcePage=dfClean.filter(col("id").equalTo(r.get(0))
+                            .and(col("timestampLong").equalTo(r.get(2))))
+                            .select("text","revision_id").collect().head
+
       val text:String=sourcePage.get(0).asInstanceOf[String]
       val revisionId=sourcePage.get(1).asInstanceOf[Long]
 
+      /* Checks on the text and revision ID just retrieved */
       if(text==null){
         (r.get(0),new util.TreeSet[String]())
       }
