@@ -1,6 +1,7 @@
 package tavonatti.scalco.wikipedia_parsing
 
 import java.text.SimpleDateFormat
+import java.util
 import java.util.Date
 
 import org.apache.spark.SparkConf
@@ -11,6 +12,7 @@ import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.storage.StorageLevel
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 object Main2 extends App {
   /*
@@ -139,8 +141,51 @@ object Main2 extends App {
 
   /* Convert the timestamp from a date string to a long value */
   val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
-  dfClean.cache()
+  //dfClean.cache()
   dfClean.printSchema()
-  dfClean.show()
+  //dfClean.show()
+
+  /* calculate the ids table*/
+  val idsDF=nodes.toDF("id","name")
+  idsDF.cache()
+  idsDF.printSchema()
+  idsDF.show()
+
+  /**
+    * extract connection between the pages
+    * @param s
+    * @return
+    */
+  def extractIDS(s:String):Array[String] ={
+    if(!(s==null || s.equals("") || s.isEmpty)){
+      val list = new util.TreeSet[String]();
+      val pattern = new Regex("\\[\\[[\\w|\\s]+\\]\\]")
+
+      val iterator=pattern.findAllIn(s)
+
+      while(iterator.hasNext){
+        var temp=iterator.next()
+        temp=temp.replaceAll("\\[\\[","").replaceAll("\\]\\]","")
+
+        list.add(temp)
+      }
+
+      val a=Array[String]()
+
+     return list.toArray(a) //((source_id,revision_id),[list of links])
+    }
+    return (new util.TreeSet[String]).toArray(Array[String]())
+  }
+
+  val extractIdsUDF= udf[Array[String],String](extractIDS)
+  spark.udf.register("extractIdsUDF",extractIdsUDF)
+
+  val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
+
+  dfClean2.printSchema()
+  dfClean2.show(true)
+
+
+
 
 }
