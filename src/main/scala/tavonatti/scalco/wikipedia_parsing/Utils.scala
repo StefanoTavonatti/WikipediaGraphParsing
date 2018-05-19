@@ -1,5 +1,7 @@
 package tavonatti.scalco.wikipedia_parsing
 
+import java.text.SimpleDateFormat
+
 import org.apache.spark.SparkContext
 import org.apache.spark.graphx.{Graph, VertexRDD}
 import org.apache.spark.ml.feature._
@@ -7,9 +9,11 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Row}
 import org.neo4j.spark.Neo4j
 import tavonatti.scalco.wikipedia_parsing.Main.{df, format, sc}
-import  org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.col
 
 object Utils {
+
+  val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
   /* Function used for creating the graph
    * https://stackoverflow.com/questions/38735413/graphx-visualization
@@ -106,7 +110,7 @@ object Utils {
     */
   def stringToTimestamp(s:String): Long={
     try {
-      if (s != null || !s.equals("")) {
+      if (!(s == null || s.equals("") || s.isEmpty)) {
         return format.parse(s).getTime()
       }
       else {
@@ -114,7 +118,8 @@ object Utils {
       }
     }catch{
       case e:Exception => {
-        println("Exception")
+        //e.printStackTrace()
+        println("Exception string: "+s)
         return 0
       }
     }
