@@ -198,23 +198,38 @@ object Main2 extends App {
   spark.udf.register("timestampToDateUDF",timestampToDateUDF)
 
 
+  /*extract ids and revision month and year*/
   val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
       .withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
       .drop("timestamp")
-      .withColumn("revsion_month",functions.month($"revision_date"))
+      .withColumn("revision_month",functions.month($"revision_date"))
       .withColumn("revision_year",functions.year($"revision_date"))
       .sort(col("timestampLong").desc)
-
-  //TODO group by and take first
 
   dfClean2.printSchema()
   //dfClean2.show(true)
 
-  val dfClean2Exploded=dfClean2.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
+  /*take the most update revision per month*/
+  val dfClean3=dfClean2.groupBy("id","title","revision_month","revision_year")
+      .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
+        .as("text"),functions.first("revision_id").as("revision_id"),
+        functions.first("tokens").as("tokens"),
+        functions.first("tokenClean").as("tokenClean"),
+        functions.first("frequencyVector").as("frequencyVector")
+        ,functions.first("timestampLong").as("timestampLong"),
+        functions.first("connected_pages").as("connected_pages")
+        ,functions.first("revision_date").as("revision_date"))
 
-  println("dfClean2Exploded: ")
-  dfClean2Exploded.printSchema()
-  dfClean2Exploded.show(true)
+
+  println("dfClean3: ")
+  dfClean3.printSchema()
+  dfClean3.show(true)
+
+  val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
+
+  println("dfClean3Exploded: ")
+  dfClean3Exploded.printSchema()
+  dfClean3Exploded.show(true)
 
 
 
