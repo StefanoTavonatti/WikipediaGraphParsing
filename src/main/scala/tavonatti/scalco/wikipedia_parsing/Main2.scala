@@ -203,18 +203,18 @@ object Main2 extends App {
       .drop("timestamp")
       .withColumn("revsion_month",functions.month($"revision_date"))
       .withColumn("revision_year",functions.year($"revision_date"))
+      .sort(col("timestampLong").desc)
 
-  //TODO orderby timestamp desc
+  //TODO group by and take first
 
   dfClean2.printSchema()
   //dfClean2.show(true)
-
 
   val dfClean2Exploded=dfClean2.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
 
   println("dfClean2Exploded: ")
   dfClean2Exploded.printSchema()
-  dfClean2Exploded.show()
+  dfClean2Exploded.show(true)
 
 
 
