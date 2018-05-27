@@ -2,7 +2,7 @@ package tavonatti.scalco.wikipedia_parsing
 
 import java.text.SimpleDateFormat
 import java.util
-import java.util.Date
+import java.util.{Date, GregorianCalendar}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.VertexId
@@ -151,6 +151,13 @@ object Main2 extends App {
   idsDF.printSchema()
   idsDF.show()
 
+  /*check for duplicate names*/
+  println("check for duplicated page title...")
+  val duplicatedRowNumber= idsDF.groupBy(col("name")).count().filter(col("count").gt(1)).count()
+  assert(duplicatedRowNumber==0)
+
+  println("no duplicated page title found")
+
   /**
     * extract connection between the pages
     * @param s
@@ -180,11 +187,34 @@ object Main2 extends App {
   val extractIdsUDF= udf[Array[String],String](extractIDS)
   spark.udf.register("extractIdsUDF",extractIdsUDF)
 
+  def timestampToDate(ts:Long):java.sql.Date={
+    if(ts!=null){
+      return new java.sql.Date(ts)
+    }
+    return null
+  }
+
+  val timestampToDateUDF=udf[java.sql.Date,Long](timestampToDate)
+  spark.udf.register("timestampToDateUDF",timestampToDateUDF)
+
+
   val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
+      .withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
+      .drop("timestamp")
+      .withColumn("revsion_month",functions.month($"revision_date"))
+      .withColumn("revision_year",functions.year($"revision_date"))
+
+  //TODO orderby timestamp desc
 
   dfClean2.printSchema()
-  dfClean2.show(true)
+  //dfClean2.show(true)
 
+
+  val dfClean2Exploded=dfClean2.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
+
+  println("dfClean2Exploded: ")
+  dfClean2Exploded.printSchema()
+  dfClean2Exploded.show()
 
 
 
