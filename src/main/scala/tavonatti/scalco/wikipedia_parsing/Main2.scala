@@ -227,9 +227,28 @@ object Main2 extends App {
 
   val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
 
+  dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
-  dfClean3Exploded.show(true)
+  //dfClean3Exploded.show(true)
+
+  val suffix="_LINKED"
+  val renamedColumns=dfClean3Exploded.columns.map(c=> dfClean3Exploded(c).as(s"$c$suffix"))
+  val dfClean3ExplodedRenamed = dfClean3Exploded.select(renamedColumns: _*).drop(s"linked_page$suffix")
+
+
+
+  println(s"dfClean3ExplodedRenamed:")
+  dfClean3ExplodedRenamed.printSchema()
+
+  println("dfClean3Exploded sample:")
+  dfClean3Exploded.select("id","title","linked_page").show()
+
+  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix","inner")
+  println("dfMerged:")
+  dfMerged.printSchema()
+
+  dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
 
 
 
