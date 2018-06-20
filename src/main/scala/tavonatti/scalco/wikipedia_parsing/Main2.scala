@@ -5,11 +5,14 @@ import java.util
 import java.util.{Date, GregorianCalendar}
 
 import org.apache.spark.SparkConf
-import org.apache.spark.graphx.VertexId
+import org.apache.spark.graphx.{Edge, Graph, VertexId}
+import org.apache.spark.ml.feature.{BucketedRandomProjectionLSH, MinHashLSH}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.storage.StorageLevel
+import org.neo4j.spark.Neo4j.{NameProp, Pattern}
+import org.neo4j.spark._
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -40,7 +43,7 @@ object Main2 extends App {
   /* Configures SparkSession and gets the spark context */
   val spark = SparkSession
     .builder()
-    .appName("Spark SQL basic example")
+    .appName("Wikipedia graph parsing")
     .master("local[*]")
     .config(conf)
     .getOrCreate()
@@ -84,7 +87,7 @@ object Main2 extends App {
 
 
   /* Finds the minumum for every page */
-  val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
+ /* val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
     val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
 
     /*if the array is empty return the iterator*/
@@ -107,11 +110,11 @@ object Main2 extends App {
     }
 
     mutable.Seq[Date] {min}.iterator
-  })
+  })*/
 
 
   /* Finds the global minimum through a reduce */
-  val first=timestampRdd.reduce((d1,d2)=>{
+ /* val first=timestampRdd.reduce((d1,d2)=>{
     if(d1.getTime<d2.getTime){
       d1
     }
@@ -120,7 +123,7 @@ object Main2 extends App {
     }
   })
 
-  println(first)
+  println(first)*/
 
   /* Building RDDs for all the nodes found. The nodes are then cached in memory since they will be used several times */
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
@@ -223,11 +226,11 @@ object Main2 extends App {
 
   println("dfClean3: ")
   dfClean3.printSchema()
-  dfClean3.show(true)
+  //dfClean3.show(true)
 
   val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
 
-  dfClean3Exploded.cache()
+  //dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
   //dfClean3Exploded.show(true)
@@ -242,14 +245,51 @@ object Main2 extends App {
   dfClean3ExplodedRenamed.printSchema()
 
   println("dfClean3Exploded sample:")
-  dfClean3Exploded.select("id","title","linked_page").show()
+ // dfClean3Exploded.select("id","title","linked_page").show()
 
-  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix","inner")
+  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix","left")
   println("dfMerged:")
   dfMerged.printSchema()
 
-  dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
 
+
+ // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
+
+  //System.exit(0)
+
+  val neo = Neo4j(sc)
+
+  /*val savedNodes=nodes.map(n=>{
+    neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
+    n
+  })
+
+  println(""+savedNodes.count()+" saved")
+
+  println("create index on :Page(pageId)...")
+  neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()*/
+
+
+  val edges: RDD[Edge[String]] =dfMerged.rdd.map(row=>{
+    val idSource=row.getAs[Long]("id")
+    val idDest=row.getAs[Long](s"id$suffix")
+    val linkName=row.getAs[Int]("revision_year")+
+      "-"+row.getAs[Int]("revision_month")
+
+    /*val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
+      "\nCREATE (p)-[:"+linkName+"{page_src:\""+42+"\"}]->(p2)"
+    neo.cypher(query).loadRowRdd.count()*/
+    //Edge(idSource,idDest,(linkName,42.0))
+    Edge(idSource,idDest,linkName)
+  })
+
+  //val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
+  val pageGraph:Graph[String,String] = Graph(nodes, edges)
+
+  print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
+  //print(Neo4jGraph.saveGraph(sc,pageGraph,"wiki_page",("boh","page"),Some("Page","id"),Some("Page","id"),merge = true))
+ // println(""+edges.reduce((a,b)=>a+b)+" edges saved")
 
 
 }
+//https://github.com/neo4j-contrib/neo4j-spark-connector
