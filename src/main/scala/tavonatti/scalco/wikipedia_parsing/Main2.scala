@@ -63,7 +63,8 @@ object Main2 extends App {
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
     //.load("samples/pages.xml")
-    .load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    .load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
@@ -259,7 +260,7 @@ object Main2 extends App {
 
   val neo = Neo4j(sc)
 
-  /*val savedNodes=nodes.map(n=>{
+  val savedNodes=nodes.map(n=>{
     neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
     n
   })
@@ -267,28 +268,28 @@ object Main2 extends App {
   println(""+savedNodes.count()+" saved")
 
   println("create index on :Page(pageId)...")
-  neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()*/
+  neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
 
 
-  val edges: RDD[Edge[String]] =dfMerged.rdd.map(row=>{
+  val edges: RDD[Long] =dfMerged.coalesce(2).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
     val linkName=row.getAs[Int]("revision_year")+
       "-"+row.getAs[Int]("revision_month")
 
-    /*val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:"+linkName+"{page_src:\""+42+"\"}]->(p2)"
-    neo.cypher(query).loadRowRdd.count()*/
+    val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
+      "\nCREATE (p)-[:LOLOL"+linkName.replace("-","gattino")+"{page_src:\""+42+"\"}]->(p2)"
+    neo.cypher(query).loadRowRdd.count()
     //Edge(idSource,idDest,(linkName,42.0))
-    Edge(idSource,idDest,linkName)
+    //Edge(idSource,idDest,linkName)
   })
 
   //val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
-  val pageGraph:Graph[String,String] = Graph(nodes, edges)
+ // val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
-  print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
+  //print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
   //print(Neo4jGraph.saveGraph(sc,pageGraph,"wiki_page",("boh","page"),Some("Page","id"),Some("Page","id"),merge = true))
- // println(""+edges.reduce((a,b)=>a+b)+" edges saved")
+ println(""+edges.reduce((a,b)=>a+b)+" edges saved")
 
 
 }
