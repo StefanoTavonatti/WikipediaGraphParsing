@@ -39,6 +39,7 @@ object Main2 extends App {
   conf.set("spark.neo4j.bolt.url","bolt://127.0.0.1:7687")
   conf.set("spark.neo4j.bolt.user","neo4j")
   conf.set("spark.neo4j.bolt.password","password")
+  conf.set("spark.driver.maxResultSize","2048")
 
   /* Configures SparkSession and gets the spark context */
   val spark = SparkSession
@@ -64,7 +65,8 @@ object Main2 extends App {
     .option("rowTag", "page")
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    .load("samples/Wikipedia-20180620152418.xml")
+    .load("samples/spaceX.xml")
+    //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
@@ -259,8 +261,10 @@ System.exit(0)*/
 
  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
   //dfMerged.show(50)
-  dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).show(50)
-  System.exit(0)
+  val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
+
+  //check for duplicates
+  assert(duplicatedEdges==0)
 
   val neo = Neo4j(sc)
 
@@ -282,8 +286,9 @@ System.exit(0)*/
       "-"+row.getAs[Int]("revision_month")
 
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{page_src:\""+42+"\"}]->(p2)"
-    neo.cypher(query).loadRowRdd.count()
+      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{similarity:\""+42+"\"}]->(p2)"
+    val saved=neo.cypher(query).loadRowRdd.count()
+    saved
     //Edge(idSource,idDest,(linkName,42.0))
     //Edge(idSource,idDest,linkName)
   })
