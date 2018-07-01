@@ -235,28 +235,32 @@ object Main2 extends App {
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
   //dfClean3Exploded.show(true)
-
+  /*dfClean3Exploded.groupBy("title","revision_month","revision_year","linked_page").count().show(50)
+System.exit(0)*/
   val suffix="_LINKED"
-  val renamedColumns=dfClean3Exploded.columns.map(c=> dfClean3Exploded(c).as(s"$c$suffix"))
-  val dfClean3ExplodedRenamed = dfClean3Exploded.select(renamedColumns: _*).drop(s"linked_page$suffix")
+  val renamedColumns=dfClean3.columns.map(c=> dfClean3(c).as(s"$c$suffix"))
+  val dfClean3ExplodedRenamed = dfClean3.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
 
 
 
   println(s"dfClean3ExplodedRenamed:")
   dfClean3ExplodedRenamed.printSchema()
+  /*dfClean3ExplodedRenamed.groupBy(s"title$suffix",s"revision_month$suffix",s"revision_year$suffix").count().show(50)
+System.exit(0)*/
 
   println("dfClean3Exploded sample:")
  // dfClean3Exploded.select("id","title","linked_page").show()
 
-  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix","left")
+  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix" && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
   println("dfMerged:")
   dfMerged.printSchema()
 
 
 
  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
-
-  //System.exit(0)
+  //dfMerged.show(50)
+  dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).show(50)
+  System.exit(0)
 
   val neo = Neo4j(sc)
 
@@ -271,14 +275,14 @@ object Main2 extends App {
   neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
 
 
-  val edges: RDD[Long] =dfMerged.coalesce(2).rdd.map(row=>{
+  val edges: RDD[Long] =dfMerged.coalesce(4).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
     val linkName=row.getAs[Int]("revision_year")+
       "-"+row.getAs[Int]("revision_month")
 
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:LOLOL"+linkName.replace("-","gattino")+"{page_src:\""+42+"\"}]->(p2)"
+      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{page_src:\""+42+"\"}]->(p2)"
     neo.cypher(query).loadRowRdd.count()
     //Edge(idSource,idDest,(linkName,42.0))
     //Edge(idSource,idDest,linkName)
