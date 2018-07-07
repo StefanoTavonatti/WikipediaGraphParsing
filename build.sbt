@@ -18,6 +18,8 @@ libraryDependencies ++= {
   )
 }
 
+libraryDependencies += "org.scalatest" % "scalatest_2.11" % "3.0.5" % "test"
+
 
 //libraryDependencies += "org.neo4j.driver" % "neo4j-java-driver" % "1.5.0"
 // https://mvnrepository.com/artifact/org.neo4j.spark/neo4j-spark-connector

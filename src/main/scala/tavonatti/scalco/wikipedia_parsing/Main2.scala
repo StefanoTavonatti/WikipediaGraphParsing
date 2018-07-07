@@ -7,6 +7,7 @@ import java.util.{Date, GregorianCalendar}
 import org.apache.spark.SparkConf
 import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.ml.feature.{BucketedRandomProjectionLSH, MinHashLSH}
+import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, functions}
 import org.apache.spark.sql.functions.{col, udf}
@@ -64,8 +65,8 @@ object Main2 extends App {
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
     //.load("samples/pages.xml")
-    //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    .load("samples/spaceX.xml")
+    .load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
 
@@ -250,6 +251,34 @@ System.exit(0)*/
   /*dfClean3ExplodedRenamed.groupBy(s"title$suffix",s"revision_month$suffix",s"revision_year$suffix").count().show(50)
 System.exit(0)*/
 
+  def computeSimilarityMetric(v1: SparseVector, v2:SparseVector):Double={
+    println("L:"+v1.size+" "+v2.size)
+    println("A: "+v1.toArray.length+" "+v2.toArray.length)
+    println("A: "+v1.toArray)
+    val b=v1.toArray
+    println(v1.indices.length+" "+v2.indices.length)
+    println(v1.values{0})
+    //println(v1.getClass)
+    return 0
+  }
+
+  def computeJaccardDistance(v1:mutable.WrappedArray[String], v2:mutable.WrappedArray[String]):Double={
+    val s1:Set[String]=v1.toSet
+    val s2:Set[String]=v2.toSet
+    val unionSet:Set[String]=s1.union(s2)
+    val intersectionSet:Set[String]=s1.intersect(s2)
+
+    val distance:Double=(unionSet.size.asInstanceOf[Double]-intersectionSet.size.asInstanceOf[Double])/unionSet.size.asInstanceOf[Double]
+
+    return 42
+  }
+
+  val computeSimilarityMetricUDF=udf[Double,SparseVector,SparseVector](computeSimilarityMetric)
+  val computeJaccardDistanceUDF=udf[Double,mutable.WrappedArray[String],mutable.WrappedArray[String]](computeJaccardDistance)
+
+  spark.udf.register("computeSimilarityMetricUDF",computeSimilarityMetricUDF)
+  spark.udf.register("computeJaccardDistanceUDF",computeJaccardDistanceUDF)
+
   println("dfClean3Exploded sample:")
  // dfClean3Exploded.select("id","title","linked_page").show()
 
@@ -257,8 +286,10 @@ System.exit(0)*/
   println("dfMerged:")
   dfMerged.printSchema()
 
+  //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
+  dfMerged.withColumn("similarity",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix"))).show(true)
 
-
+  System.exit(0)
  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
   //dfMerged.show(50)
   val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
