@@ -270,7 +270,7 @@ System.exit(0)*/
 
     val distance:Double=(unionSet.size.asInstanceOf[Double]-intersectionSet.size.asInstanceOf[Double])/unionSet.size.asInstanceOf[Double]
 
-    return 42
+    return distance
   }
 
   val computeSimilarityMetricUDF=udf[Double,SparseVector,SparseVector](computeSimilarityMetric)
@@ -283,13 +283,13 @@ System.exit(0)*/
  // dfClean3Exploded.select("id","title","linked_page").show()
 
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix" && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
+    .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
   println("dfMerged:")
   dfMerged.printSchema()
 
   //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
-  dfMerged.withColumn("similarity",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix"))).show(true)
 
-  System.exit(0)
+
  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
   //dfMerged.show(50)
   val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
@@ -317,7 +317,7 @@ System.exit(0)*/
       "-"+row.getAs[Int]("revision_month")
 
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{similarity:\""+42+"\"}]->(p2)"
+      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{distance:\""+row.getAs[Double]("JaccardDistance")+"\"}]->(p2)"
     val saved=neo.cypher(query).loadRowRdd.count()
     saved
     //Edge(idSource,idDest,(linkName,42.0))
