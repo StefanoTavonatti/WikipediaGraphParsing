@@ -235,7 +235,7 @@ object Main2 extends App {
 
   val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
 
-  //dfClean3Exploded.cache()
+  dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
   //dfClean3Exploded.show(true)
@@ -340,8 +340,13 @@ System.exit(0)*/
   })
   //print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
   //print(Neo4jGraph.saveGraph(sc,pageGraph,"wiki_page",("boh","page"),Some("Page","id"),Some("Page","id"),merge = true))
- println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
+  println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
 
+  val linkCount=dfClean3Exploded.groupBy("revision_year","revision_month").count()
+   .orderBy(col("revision_year").asc,col("revision_month").asc)
+
+  linkCount.coalesce(1).write.format("csv").option("separator",",")
+    .option("header","true").save("outputs/linkCount")
 
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
