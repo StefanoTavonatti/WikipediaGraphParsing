@@ -65,7 +65,8 @@ object Main2 extends App {
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
     //.load("samples/pages.xml")
-    .load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
+    .load("samples/Wikipedia-20180710084606.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
@@ -310,26 +311,36 @@ System.exit(0)*/
   neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
 
 
-  val edges: RDD[Long] =dfMerged.coalesce(4).rdd.map(row=>{
+  val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(4).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
     val linkName=row.getAs[Int]("revision_year")+
       "-"+row.getAs[Int]("revision_month")
 
-    val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revison_"+linkName.replace("-","_")+"{distance:\""+row.getAs[Double]("JaccardDistance")+"\"}]->(p2)"
-    val saved=neo.cypher(query).loadRowRdd.count()
-    saved
-    //Edge(idSource,idDest,(linkName,42.0))
+
+    //saved
+    Edge(idSource,idDest,(linkName,row.getAs[Double]("JaccardDistance")))
     //Edge(idSource,idDest,linkName)
   })
 
-  //val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
+  val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
  // val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
+  val savedEdges: RDD[Long]=edges.map(e=>{
+
+    val idSource=e.srcId
+    val idDest=e.dstId
+
+    val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
+      "\nCREATE (p)-[:revison_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
+    val saved=neo.cypher(query).loadRowRdd.count()
+
+    saved
+
+  })
   //print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
   //print(Neo4jGraph.saveGraph(sc,pageGraph,"wiki_page",("boh","page"),Some("Page","id"),Some("Page","id"),merge = true))
- println(""+edges.reduce((a,b)=>a+b)+" edges saved")
+ println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
 
 
 }
