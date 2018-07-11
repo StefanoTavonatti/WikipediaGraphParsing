@@ -355,10 +355,17 @@ System.exit(0)*/
   //ranking.vertices.saveAsTextFile("outputs/vertices")
   //ranking.edges.saveAsTextFile("outputs/edges")
 
-  print("update: "+ranking.vertices.map(v=>{
+  println("update: "+ranking.vertices.map(v=>{
     neo.cypher("MATCH (p:Page{pageId:"+v._1+"})\n" +
       "SET p.rank="+v._2+"\n RETURN p").loadRowRdd.count()
   }).reduce((a,b)=>a+b)+" vertices")
 
+  val edgesUpdated=ranking.edges.map(e=>{
+    neo.cypher("MATCH (a {pageId:"+e.srcId+"}) -[r]- (b {pageId:"+e.dstId+"})\n" +
+      "SET r.rankWeight="+e.attr).loadRowRdd.count()
+
+  }).reduce((a,b)=>a+b)
+
+  println(edgesUpdated+" edge updated")
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
