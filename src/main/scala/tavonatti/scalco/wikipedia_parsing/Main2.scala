@@ -352,8 +352,13 @@ System.exit(0)*/
   /*page ranking*/
 
   val ranking=pageGraph.pageRank(0.0001)
-  ranking.vertices.saveAsTextFile("outputs/vertices")
-  ranking.edges.saveAsTextFile("outputs/edges")
+  //ranking.vertices.saveAsTextFile("outputs/vertices")
+  //ranking.edges.saveAsTextFile("outputs/edges")
+
+  print("update: "+ranking.vertices.map(v=>{
+    neo.cypher("MATCH (p:Page{pageId:"+v._1+"})\n" +
+      "SET p.rank="+v._2+"\n RETURN p").loadRowRdd.count()
+  }).reduce((a,b)=>a+b)+" vertices")
 
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
