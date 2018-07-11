@@ -348,5 +348,11 @@ System.exit(0)*/
   linkCount.coalesce(1).write.format("csv").option("separator",",")
     .option("header","true").save("outputs/linkCount")
 
+  /*page ranking*/
+
+  val ranking=pageGraph.pageRank(0.0001)
+  ranking.vertices.saveAsTextFile("outputs/vertices")
+  ranking.edges.saveAsTextFile("outputs/edges")
+
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
