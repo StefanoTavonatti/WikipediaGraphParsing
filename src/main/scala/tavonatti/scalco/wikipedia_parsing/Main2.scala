@@ -284,6 +284,7 @@ System.exit(0)*/
  // dfClean3Exploded.select("id","title","linked_page").show()
 
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix" && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
+    .filter($"id"=!=$"id$suffix")
     .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
   println("dfMerged:")
   dfMerged.printSchema()
