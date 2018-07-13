@@ -134,7 +134,7 @@ object Main2 extends App {
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
 
     /* Creating a node with the id of the page and the title */
-    (n.get(0).asInstanceOf[Long],n.get(1).toString)
+    (n.get(0).asInstanceOf[Long],n.get(1).toString.toLowerCase)
   })
   nodes.cache()
 
@@ -283,12 +283,13 @@ System.exit(0)*/
   println("dfClean3Exploded sample:")
  // dfClean3Exploded.select("id","title","linked_page").show()
 
-  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,$"linked_page"===$"title$suffix" && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
+  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
     .filter($"id"=!=$"id$suffix")
     .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
   println("dfMerged:")
   dfMerged.printSchema()
-
+  dfMerged.cache()
+  dfClean3Exploded.unpersist()
   //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
 
 
@@ -339,33 +340,55 @@ System.exit(0)*/
     saved
 
   })
-  //print(neo.saveGraph(pageGraph,"page_name",Pattern(new NameProp("Page","id"),Seq(new NameProp("to-","years")),new NameProp("Page","id")),merge = true))
-  //print(Neo4jGraph.saveGraph(sc,pageGraph,"wiki_page",("boh","page"),Some("Page","id"),Some("Page","id"),merge = true))
+
   println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
 
-  val linkCount=dfClean3Exploded.groupBy("revision_year","revision_month").count()
+  val linkCount=dfMerged.groupBy("revision_year","revision_month").count()
    .orderBy(col("revision_year").asc,col("revision_month").asc)
 
   linkCount.coalesce(1).write.format("csv").option("separator",",")
     .option("header","true").save("outputs/linkCount")
 
-  /*page ranking*/
+  dfMerged.groupBy("id","title").agg(functions.count($"revision_month").as("months"),
+    functions.count($"revision_year").as("years")).coalesce(1)
+      .write.format("csv").option("header","true").save("outputs/page_d")
 
-  val ranking=pageGraph.pageRank(0.0001)
-  //ranking.vertices.saveAsTextFile("outputs/vertices")
-  //ranking.edges.saveAsTextFile("outputs/edges")
 
-  println("update: "+ranking.vertices.map(v=>{
-    neo.cypher("MATCH (p:Page{pageId:"+v._1+"})\n" +
-      "SET p.rank="+v._2+"\n RETURN p").loadRowRdd.count()
-  }).reduce((a,b)=>a+b)+" vertices")
+  println("Compute rank per year")
 
-  val edgesUpdated=ranking.edges.map(e=>{
-    neo.cypher("MATCH (a {pageId:"+e.srcId+"}) -[r]- (b {pageId:"+e.dstId+"})\n" +
-      "SET r.rankWeight="+e.attr).loadRowRdd.count()
 
-  }).reduce((a,b)=>a+b)
+  val it=linkCount.rdd.collect().iterator
 
-  println(edgesUpdated+" edge updated")
+  while (it.hasNext){
+    val row=it.next()
+
+    println("revison_"
+      +row.getAs[String]("revision_year")+"_"+
+      row.getAs[String]("revision_month"))
+
+    val vertices= pageGraph.subgraph(epred = t=>t.attr._1.equals("revison_"
+      +row.getAs[String]("revision_year")+"_"+
+      row.getAs[String]("revision_month")))
+      .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
+
+    row*/
+
+    /*val iterator=vertices.collect().iterator
+
+
+    val a=new util.ArrayList[(Double,String,String,String)]()
+
+    while (iterator.hasNext){
+      val v=iterator.next()
+      a.add((v._1,v._2,row.getAs[String]("revision_year"),row.getAs[String]("revision_month")))
+    }
+*/
+    vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year")+"_"+
+      row.getAs[String]("revision_month"))
+
+  }
+
+  System.exit(0)
+
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
