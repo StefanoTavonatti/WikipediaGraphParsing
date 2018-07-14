@@ -66,7 +66,8 @@ object Main2 extends App {
     .option("rowTag", "page")
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    .load("samples/Wikipedia-20180710084606.xml")
+    //.load("samples/Wikipedia-20180710084606.xml")
+    .load("samples/Wikipedia-20180710151718.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
@@ -88,47 +89,7 @@ object Main2 extends App {
 
 
 
-  /*search first revision date in the dataset*/
 
-
-  /* Finds the minumum for every page */
- /* val timestampRdd:RDD[Date] =df.select("revision.timestamp").rdd.flatMap(row=>{
-    val it=row.get(0).asInstanceOf[mutable.WrappedArray[String]].iterator
-
-    /*if the array is empty return the iterator*/
-    if(!it.hasNext){
-      it
-    }
-
-    /* This represents the time that is used to check all the other dates */
-    var min: Date = new Date(System.currentTimeMillis()+1000)
-
-    /* Iterates through all the dates and checks if a new minimum is found at every iteration*/
-    while (it.hasNext){
-      if(it!=null && !it.equals("") && it.nonEmpty) {
-        val temp: Date = format.parse(it.next());
-        if (temp.getTime < min.getTime) {
-          /* New minimum found */
-          min = temp
-        }
-      }
-    }
-
-    mutable.Seq[Date] {min}.iterator
-  })*/
-
-
-  /* Finds the global minimum through a reduce */
- /* val first=timestampRdd.reduce((d1,d2)=>{
-    if(d1.getTime<d2.getTime){
-      d1
-    }
-    else {
-      d2
-    }
-  })
-
-  println(first)*/
 
   /* Building RDDs for all the nodes found. The nodes are then cached in memory since they will be used several times */
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
@@ -150,6 +111,7 @@ object Main2 extends App {
   /* Convert the timestamp from a date string to a long value */
   val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
   //dfClean.cache()
+  println("dfClean:")
   dfClean.printSchema()
   //dfClean.show()
 
@@ -214,6 +176,7 @@ object Main2 extends App {
       .withColumn("revision_year",functions.year($"revision_date"))
       .sort(col("timestampLong").desc)
 
+  println("dfClean2:")
   dfClean2.printSchema()
   //dfClean2.show(true)
 
@@ -238,9 +201,15 @@ object Main2 extends App {
   dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
-  //dfClean3Exploded.show(true)
-  /*dfClean3Exploded.groupBy("title","revision_month","revision_year","linked_page").count().show(50)
-System.exit(0)*/
+
+  /* Exporting pagesfor debugging */
+  /*dfClean3Exploded.select("linked_page").distinct().coalesce(1)
+    .write.format("csv").option("header","false").save("outputs/connected_pages")
+
+  dfClean3Exploded.select("linked_page").filter(functions.lower($"title").equalTo("italy")).distinct().coalesce(1)
+    .write.format("csv").option("header","false").save("outputs/connected_pages_italy")
+  */
+
   val suffix="_LINKED"
   val renamedColumns=dfClean3.columns.map(c=> dfClean3(c).as(s"$c$suffix"))
   val dfClean3ExplodedRenamed = dfClean3.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
@@ -249,8 +218,6 @@ System.exit(0)*/
 
   println(s"dfClean3ExplodedRenamed:")
   dfClean3ExplodedRenamed.printSchema()
-  /*dfClean3ExplodedRenamed.groupBy(s"title$suffix",s"revision_month$suffix",s"revision_year$suffix").count().show(50)
-System.exit(0)*/
 
   def computeSimilarityMetric(v1: SparseVector, v2:SparseVector):Double={
     println("L:"+v1.size+" "+v2.size)
@@ -280,7 +247,7 @@ System.exit(0)*/
   spark.udf.register("computeSimilarityMetricUDF",computeSimilarityMetricUDF)
   spark.udf.register("computeJaccardDistanceUDF",computeJaccardDistanceUDF)
 
-  println("dfClean3Exploded sample:")
+  //println("dfClean3Exploded sample:")
  // dfClean3Exploded.select("id","title","linked_page").show()
 
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
@@ -371,7 +338,7 @@ System.exit(0)*/
       row.getAs[String]("revision_month")))
       .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
 
-    row*/
+
 
     /*val iterator=vertices.collect().iterator
 
