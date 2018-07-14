@@ -6,6 +6,5 @@
 mkdir -p pages
 
 while read p; do
-  #curl -d "" 'http://en.wikipedia.org/w/index.php?title=Special:Export&pages='$p'&limit=1000&action=submit' -o "pages/"$p".xml"
-   echo 'http://en.wikipedia.org/w/index.php?title=Special:Export&pages='$p'&limit=1000&action=submit'
+   curl -X POST 'https://en.wikipedia.org/w/index.php?title=Special:Export&pages='${p//" "/_}'&offset=1&limit=1000&action=submit' -o "pages/"${p//" "/_}".xml"
 done <connected_pages_italy.csv
