@@ -9,8 +9,9 @@ import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.ml.feature.{BucketedRandomProjectionLSH, MinHashLSH}
 import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SparkSession, functions}
+import org.apache.spark.sql.{Row, SparkSession, functions}
 import org.apache.spark.sql.functions.{col, udf}
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
 import org.apache.spark.storage.StorageLevel
 import org.neo4j.spark.Neo4j.{NameProp, Pattern}
 import org.neo4j.spark._
@@ -337,6 +338,9 @@ object Main2 extends App {
 
   val it=linkCount.rdd.collect().iterator
 
+
+  var rankingRDD:RDD[(Long,Double,Int,Int)]=sc.emptyRDD
+
   while (it.hasNext){
     val row=it.next()
 
@@ -349,24 +353,25 @@ object Main2 extends App {
       row.getAs[String]("revision_month")))
       .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
 
-
-
-    /*val iterator=vertices.collect().iterator
-
-
-    val a=new util.ArrayList[(Double,String,String,String)]()
-
-    while (iterator.hasNext){
-      val v=iterator.next()
-      a.add((v._1,v._2,row.getAs[String]("revision_year"),row.getAs[String]("revision_month")))
-    }
-*/
     vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year")+"_"+
       row.getAs[String]("revision_month"))
 
+    val verticesDate=vertices.map(v=>{
+      (v._1.toLong,v._2,row.getAs[Int]("revision_year"),row.getAs[Int]("revision_month"))
+    })
+
+    rankingRDD=rankingRDD.union(verticesDate)
+
   }
 
-  System.exit(0)
+
+  val rankingDF=rankingRDD.toDF("id","rank","revision_year","revision_month")
+      .join(idsDF,"id")
+  rankingDF.printSchema()
+  rankingDF.coalesce(1).write.format("csv")
+    .option("header","true").save("outputs/rankTime")
+  rankingDF.show()
+
 
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
