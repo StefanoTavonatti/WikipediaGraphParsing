@@ -143,8 +143,14 @@ object Main2 extends App {
       while(iterator.hasNext){
         var temp=iterator.next()
         temp=temp.replaceAll("\\[\\[","").replaceAll("\\]\\]","")
+        var splitted=temp.split("\\|")
 
-        list.add(temp)
+        val it2=splitted.iterator
+        while(it2.hasNext){
+          val split=it2.next()
+          list.add(split)
+        }
+
       }
 
       val a=Array[String]()
@@ -319,6 +325,11 @@ object Main2 extends App {
   dfMerged.groupBy("id","title").agg(functions.count($"revision_month").as("months"),
     functions.count($"revision_year").as("years")).coalesce(1)
       .write.format("csv").option("header","true").save("outputs/page_d")
+
+  dfMerged.groupBy("id","title","revision_year","revision_month")
+    .agg(functions.count($"linked_page").as("number_of_links")).coalesce(1)
+    .write.format("csv").option("header","true").option("separator",",")
+    .save("outputs/linkTime")
 
 
   println("Compute rank per year")
