@@ -68,7 +68,8 @@ object Main2 extends App {
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
     //.load("samples/Wikipedia-20180710084606.xml")
-    .load("samples/Wikipedia-20180710151718.xml")
+    //.load("samples/Wikipedia-20180710151718.xml")
+    .load("samples/italy.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
@@ -121,6 +122,8 @@ object Main2 extends App {
   idsDF.cache()
   idsDF.printSchema()
   idsDF.show()
+
+  idsDF.groupBy(col("name")).count().filter(col("count").gt(1)).coalesce(1).write.csv("outputs/dup")
 
   /*check for duplicate names*/
   println("check for duplicated page title...")
@@ -276,7 +279,7 @@ object Main2 extends App {
 
   val neo = Neo4j(sc)
 
-  val savedNodes=nodes.map(n=>{
+  val savedNodes=nodes.repartition(6).map(n=>{
     neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
     n
   })
