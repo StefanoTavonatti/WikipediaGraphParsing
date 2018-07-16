@@ -69,7 +69,8 @@ object Main2 extends App {
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
     //.load("samples/Wikipedia-20180710084606.xml")
     //.load("samples/Wikipedia-20180710151718.xml")
-    .load("samples/italy.xml")
+    //.load("samples/italy.xml")
+    .load("samples/total.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
@@ -263,6 +264,7 @@ object Main2 extends App {
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
     .filter($"id"=!=$"id$suffix")
     .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
+      .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_month","revision_year",s"revision_year$suffix",s"revision_month$suffix","JaccardDistance")
   println("dfMerged:")
   dfMerged.printSchema()
   dfMerged.cache()
