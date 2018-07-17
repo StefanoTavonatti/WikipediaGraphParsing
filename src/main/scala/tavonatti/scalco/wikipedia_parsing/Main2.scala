@@ -318,8 +318,9 @@ object Main2 extends App {
 
   val neo = Neo4j(sc)
 
-  val savedNodes=nodes.repartition(6).map(n=>{
-    neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:+"+n._1+"})").loadRowRdd.count()
+  val savedNodes=nodes.repartition(1).map(n=>{
+    //println("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})")
+    neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})").loadRowRdd.count()
     n
   })
 
@@ -329,13 +330,15 @@ object Main2 extends App {
   neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
 
 
-  val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(4).rdd.map(row=>{
+  dfMerged.show()
+
+  val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(1).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
     val linkName=row.getAs[Int]("revision_year")+
       "-"+row.getAs[Int]("revision_month")
 
-
+    //println("edge "+idSource+" "+idDest)
     //saved
     Edge(idSource,idDest,(linkName,row.getAs[Double]("JaccardDistance")))
     //Edge(idSource,idDest,linkName)
@@ -352,12 +355,13 @@ object Main2 extends App {
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
       "\nCREATE (p)-[:revison_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
     val saved=neo.cypher(query).loadRowRdd.count()
-
+    //println(query)
     saved
 
   })
 
-  println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
+  //println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
+  println(""+savedEdges.count()+" edges saved")
 
   val linkCount=dfMerged.groupBy("revision_year","revision_month").count()
    .orderBy(col("revision_year").asc,col("revision_month").asc)
