@@ -109,13 +109,14 @@ object Utils {
     * @return
     */
   def stringToTimestamp(s:String): Long={
+    if(s == null)
+      return 0
+    if(s.equals(""))
+      return 0
+    if(s.isEmpty)
+      return 0
     try {
-      if (!(s == null || s.equals("") || s.isEmpty)) {
-        return format.parse(s).getTime()
-      }
-      else {
-        return 0
-      }
+       return format.parse(s).getTime()
     }catch{
       case e:Exception => {
         //e.printStackTrace()

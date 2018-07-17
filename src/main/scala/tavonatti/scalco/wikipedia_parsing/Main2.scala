@@ -70,9 +70,9 @@ object Main2 extends App {
     //.load("samples/Wikipedia-20180710084606.xml")
     //.load("samples/Wikipedia-20180710151718.xml")
     //.load("samples/italy.xml")
-    .load("samples/total.xml")
+    //.load("samples/total.xml")
     //.load("samples/spaceX.xml")
-    //.load("samples/Wikipedia-20180620152418.xml")
+    .load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
@@ -190,9 +190,23 @@ object Main2 extends App {
   println("dfClean2:")
   dfClean2.printSchema()
   //dfClean2.show(true)
+  dfClean2.cache()
 
-  /*take the most update revision per month*/
-  val dfClean3=dfClean2.groupBy("id","title","revision_month","revision_year")
+  val dfClean2Iterator= dfClean2.select("revision_year","revision_month").distinct()
+    .sort(col("revision_year").asc,col("revision_month").asc).collect().iterator
+
+  var rowsRDD:RDD[Row]=sc.emptyRDD
+
+  while (dfClean2Iterator.hasNext){
+    val row=dfClean2Iterator.next()
+
+    println("revison_"
+      +row.getAs[String]("revision_year")+"_"+
+      row.getAs[String]("revision_month"))
+
+    val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")).and(
+      col("revision_month").leq(row.getAs[Int]("revision_month"))
+    )).groupBy("id","title")
       .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
         .as("text"),functions.first("revision_id").as("revision_id"),
         functions.first("tokens").as("tokens"),
@@ -201,15 +215,38 @@ object Main2 extends App {
         ,functions.first("timestampLong").as("timestampLong"),
         functions.first("connected_pages").as("connected_pages")
         ,functions.first("revision_date").as("revision_date"))
+      .withColumn("revision_year",functions.lit(row.getAs[Int]("revision_year")))
+      .withColumn("revision_month",functions.lit(row.getAs[Int]("revision_month")))
 
+    rowsRDD=rowsRDD.union(tempTable.rdd)
+
+  }
+
+  //spark.createDataFrame(rowsRDD,dfClean2.schema).show()
+  //System.exit(0)
+
+  /*take the most update revision per month*/
+  /*val dfClean3=dfClean2.groupBy("id","title","revision_month","revision_year")
+      .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
+        .as("text"),functions.first("revision_id").as("revision_id"),
+        functions.first("tokens").as("tokens"),
+        functions.first("tokenClean").as("tokenClean"),
+        functions.first("frequencyVector").as("frequencyVector")
+        ,functions.first("timestampLong").as("timestampLong"),
+        functions.first("connected_pages").as("connected_pages")
+        ,functions.first("revision_date").as("revision_date"))*/
+
+  val dfClean3=spark.createDataFrame(rowsRDD,dfClean2.schema)
 
   println("dfClean3: ")
   dfClean3.printSchema()
   //dfClean3.show(true)
+  //System.exit(0)
 
+  //TODO not drop connected pages, size of the union
   val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
 
-  dfClean3Exploded.cache()
+ // dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
 
@@ -268,7 +305,7 @@ object Main2 extends App {
   println("dfMerged:")
   dfMerged.printSchema()
   dfMerged.cache()
-  dfClean3Exploded.unpersist()
+  dfClean2.unpersist()
   //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
 
 
@@ -377,6 +414,8 @@ object Main2 extends App {
     .option("header","true").save("outputs/rankTime")
   rankingDF.show()
 
+  dfMerged.coalesce(1).write.format("csv")
+    .option("header","true").save("outputs/dfMerged")
 
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
