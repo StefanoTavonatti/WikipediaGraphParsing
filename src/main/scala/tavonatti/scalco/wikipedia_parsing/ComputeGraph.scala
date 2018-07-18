@@ -58,7 +58,8 @@ object ComputeGraph extends App {
 
   //TODO not drop connected pages, size of the union
 
-  val dfClean3Exploded=df.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
+  val dfClean3Exploded=df.withColumn("linked_page",functions.explode(col("connected_pages")))
+    //.drop("connected_pages")
 
   // dfClean3Exploded.cache()
   println("dfClean3Exploded: ")
@@ -81,44 +82,56 @@ object ComputeGraph extends App {
   println(s"dfClean3ExplodedRenamed:")
   dfClean3ExplodedRenamed.printSchema()
 
-  def computeSimilarityMetric(v1: SparseVector, v2:SparseVector):Double={
-    println("L:"+v1.size+" "+v2.size)
-    println("A: "+v1.toArray.length+" "+v2.toArray.length)
-    println("A: "+v1.toArray)
-    val b=v1.toArray
-    println(v1.indices.length+" "+v2.indices.length)
-    println(v1.values{0})
-    //println(v1.getClass)
-    return 0
+
+  def computeSimilarityMetric(jaccard:Double,links:Double,cosine:Double):Double={
+    return 0.3*jaccard+0.3*links+0.6*cosine
   }
 
-  def computeJaccardDistance(v1:mutable.WrappedArray[String], v2:mutable.WrappedArray[String]):Double={
-    val s1:Set[String]=v1.toSet
-    val s2:Set[String]=v2.toSet
+
+  def computeJaccardSimilarity(v1:mutable.WrappedArray[String], v2:mutable.WrappedArray[String]):Double={
+    val s1:Set[String]=v1.toSet.map((str:String)=>(str.toLowerCase))
+    val s2:Set[String]=v2.toSet.map((str:String)=>(str.toLowerCase))
     val unionSet:Set[String]=s1.union(s2)
     val intersectionSet:Set[String]=s1.intersect(s2)
 
-    val distance:Double=(unionSet.size.asInstanceOf[Double]-intersectionSet.size.asInstanceOf[Double])/unionSet.size.asInstanceOf[Double]
+    val distance:Double=intersectionSet.size.asInstanceOf[Double]/unionSet.size.asInstanceOf[Double]
 
     return distance
   }
 
-  val computeSimilarityMetricUDF=udf[Double,SparseVector,SparseVector](computeSimilarityMetric)
-  val computeJaccardDistanceUDF=udf[Double,mutable.WrappedArray[String],mutable.WrappedArray[String]](computeJaccardDistance)
+  def computeCosineSimilarity(v1:SparseVector,v2:SparseVector):Double={
+    val a=v1.toArray
+    val b=v2.toArray
+    val ab=(for((x, y) <- a zip b) yield x * y) sum
+    val magA=math.sqrt(a map(i=>i*i) sum)
+    val magB=math.sqrt(b map(i=>i*i) sum)
+    return ab/(magA*magB)
+  }
+
+  //def computeLinkJaccardSimilarity
+
+  val computeSimilarityMetricUDF=udf[Double,Double,Double,Double](computeSimilarityMetric)
+  val computeJaccardSimilarityUDF=udf[Double,mutable.WrappedArray[String],mutable.WrappedArray[String]](computeJaccardSimilarity)
+  val computeCosineSimilarityUDF=udf[Double,SparseVector,SparseVector](computeCosineSimilarity)
 
   spark.udf.register("computeSimilarityMetricUDF",computeSimilarityMetricUDF)
-  spark.udf.register("computeJaccardDistanceUDF",computeJaccardDistanceUDF)
+  spark.udf.register("computeJaccardSimilarityUDF",computeJaccardSimilarityUDF)
+  spark.udf.register("computeCosineSimilarityUDF",computeCosineSimilarityUDF)
 
   //println("dfClean3Exploded sample:")
   // dfClean3Exploded.select("id","title","linked_page").show()
 
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix","inner")
     .filter($"id"=!=$"id$suffix")
-    .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
-    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_year",s"revision_year$suffix","JaccardDistance")
+    .withColumn("JaccardSimilarity",computeJaccardSimilarityUDF(col("tokenClean"),col(s"tokenClean$suffix")))
+    .withColumn("link_similarity",computeJaccardSimilarityUDF(col("connected_pages"),col(s"connected_pages$suffix")))
+    .withColumn("cosine_similarity",computeCosineSimilarityUDF(col("frequencyVector"),col(s"frequencyVector$suffix")))
+    .withColumn("similarity",computeSimilarityMetricUDF($"JaccardSimilarity",$"link_similarity",$"cosine_similarity"))
+    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_year",s"revision_year$suffix","JaccardSimilarity","link_similarity","cosine_similarity")
   println("dfMerged:")
   dfMerged.printSchema()
   dfMerged.cache()
+
   //dfClean2.unpersist()
   //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
 
@@ -154,7 +167,7 @@ object ComputeGraph extends App {
 
     //println("edge "+idSource+" "+idDest)
     //saved
-    Edge(idSource,idDest,(linkName,row.getAs[Double]("JaccardDistance")))
+    Edge(idSource,idDest,(linkName,row.getAs[Double]("similarity")))
     //Edge(idSource,idDest,linkName)
   })
 
@@ -167,7 +180,7 @@ object ComputeGraph extends App {
     val idDest=e.dstId
 
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revision_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
+      "\nCREATE (p)-[:revision_"+e.attr._1.replace("-","_")+"{similarity:\""+e.attr._2+"\"}]->(p2)"
     val saved=neo.cypher(query).loadRowRdd.count()
     //println(query)
     saved
