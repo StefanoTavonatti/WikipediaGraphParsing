@@ -112,10 +112,10 @@ object ComputeGraph extends App {
   //println("dfClean3Exploded sample:")
   // dfClean3Exploded.select("id","title","linked_page").show()
 
-  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
+  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix","inner")
     .filter($"id"=!=$"id$suffix")
     .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
-    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_month","revision_year",s"revision_year$suffix",s"revision_month$suffix","JaccardDistance")
+    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_year",s"revision_year$suffix","JaccardDistance")
   println("dfMerged:")
   dfMerged.printSchema()
   dfMerged.cache()
@@ -149,8 +149,8 @@ object ComputeGraph extends App {
   val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(1).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
-    val linkName=row.getAs[Int]("revision_year")+
-      "-"+row.getAs[Int]("revision_month")
+    val linkName=""+row.getAs[Int]("revision_year")
+    //+"-"+row.getAs[Int]("revision_month")
 
     //println("edge "+idSource+" "+idDest)
     //saved
@@ -167,7 +167,7 @@ object ComputeGraph extends App {
     val idDest=e.dstId
 
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revison_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
+      "\nCREATE (p)-[:revision_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
     val saved=neo.cypher(query).loadRowRdd.count()
     //println(query)
     saved
@@ -177,17 +177,17 @@ object ComputeGraph extends App {
   //println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
   println(""+savedEdges.count()+" edges saved")
 
-  val linkCount=dfMerged.groupBy("revision_year","revision_month").count()
-    .orderBy(col("revision_year").asc,col("revision_month").asc)
+  val linkCount=dfMerged.groupBy("revision_year").count()
+    .orderBy(col("revision_year").asc)
 
   linkCount.coalesce(1).write.format("csv").option("separator",",")
     .option("header","true").save("outputs/linkCount")
 
-  dfMerged.groupBy("id","title").agg(functions.count($"revision_month").as("months"),
-    functions.count($"revision_year").as("years")).coalesce(1)
+  dfMerged.groupBy("id","title").agg(functions.count($"revision_year").as("years"))
+    .coalesce(1)
     .write.format("csv").option("header","true").save("outputs/page_d")
 
-  dfMerged.groupBy("id","title","revision_year","revision_month")
+  dfMerged.groupBy("id","title","revision_year")
     .agg(functions.count($"linked_page").as("number_of_links")).coalesce(1)
     .write.format("csv").option("header","true").option("separator",",")
     .save("outputs/linkTime")
@@ -199,25 +199,22 @@ object ComputeGraph extends App {
   val it=linkCount.rdd.collect().iterator
 
 
-  var rankingRDD:RDD[(Long,Double,Int,Int)]=sc.emptyRDD
+  var rankingRDD:RDD[(Long,Double,Int)]=sc.emptyRDD
 
   while (it.hasNext){
     val row=it.next()
 
     println("revison_"
-      +row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month"))
+      +row.getAs[String]("revision_year"))
 
     val vertices= pageGraph.subgraph(epred = t=>t.attr._1.equals("revison_"
-      +row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month")))
+      +row.getAs[String]("revision_year")))
       .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
 
-    vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month"))
+    vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year"))
 
     val verticesDate=vertices.map(v=>{
-      (v._1.toLong,v._2,row.getAs[Int]("revision_year"),row.getAs[Int]("revision_month"))
+      (v._1.toLong,v._2,row.getAs[Int]("revision_year"))
     })
 
     rankingRDD=rankingRDD.union(verticesDate)
@@ -225,7 +222,7 @@ object ComputeGraph extends App {
   }
 
 
-  val rankingDF=rankingRDD.toDF("id","rank","revision_year","revision_month")
+  val rankingDF=rankingRDD.toDF("id","rank","revision_year")
     .join(idsDF,"id")
   rankingDF.printSchema()
   rankingDF.coalesce(1).write.format("csv")
