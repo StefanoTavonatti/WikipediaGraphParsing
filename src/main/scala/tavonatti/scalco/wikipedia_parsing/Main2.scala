@@ -67,12 +67,12 @@ object Main2 extends App {
     .option("rowTag", "page")
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    //.load("samples/Wikipedia-20180710084606.xml")
+    .load("samples/Wikipedia-20180710084606.xml")
     //.load("samples/Wikipedia-20180710151718.xml")
     //.load("samples/italy.xml")
     //.load("samples/total.xml")
     //.load("samples/spaceX.xml")
-    .load("samples/Wikipedia-20180620152418.xml")
+    //.load("samples/Wikipedia-20180620152418.xml")
     //.load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
@@ -311,10 +311,10 @@ object Main2 extends App {
 
  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
   //dfMerged.show(50)
-  val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
+//  val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
 
   //check for duplicates
-  assert(duplicatedEdges==0)
+ // assert(duplicatedEdges==0)
 
   val neo = Neo4j(sc)
 
