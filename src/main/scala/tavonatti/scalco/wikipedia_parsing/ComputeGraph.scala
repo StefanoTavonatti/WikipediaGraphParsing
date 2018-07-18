@@ -81,7 +81,7 @@ object ComputeGraph extends App {
 
 
   def computeSimilarityMetric(jaccard:Double,links:Double,cosine:Double):Double={
-    return 0.3*jaccard+0.3*links+0.6*cosine
+    return 0.3*jaccard+0.3*cosine+0.6*links
   }
 
 
