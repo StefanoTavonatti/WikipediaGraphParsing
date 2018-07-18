@@ -55,9 +55,6 @@ object ComputeGraph extends App {
   idsDF.show()
 
 
-
-  //TODO not drop connected pages, size of the union
-
   val dfClean3Exploded=df.withColumn("linked_page",functions.explode(col("connected_pages")))
     //.drop("connected_pages")
 
@@ -74,8 +71,8 @@ object ComputeGraph extends App {
   */
 
   val suffix="_LINKED"
-  val renamedColumns=dfClean3Exploded.columns.map(c=> dfClean3Exploded(c).as(s"$c$suffix"))
-  val dfClean3ExplodedRenamed = dfClean3Exploded.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
+  val renamedColumns=df.columns.map(c=> df(c).as(s"$c$suffix"))
+  val dfClean3ExplodedRenamed = df.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
 
 
 
@@ -127,7 +124,7 @@ object ComputeGraph extends App {
     .withColumn("link_similarity",computeJaccardSimilarityUDF(col("connected_pages"),col(s"connected_pages$suffix")))
     .withColumn("cosine_similarity",computeCosineSimilarityUDF(col("frequencyVector"),col(s"frequencyVector$suffix")))
     .withColumn("similarity",computeSimilarityMetricUDF($"JaccardSimilarity",$"link_similarity",$"cosine_similarity"))
-    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_year",s"revision_year$suffix","JaccardSimilarity","link_similarity","cosine_similarity")
+    .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_year",s"revision_year$suffix","JaccardSimilarity","link_similarity","cosine_similarity","similarity")
   println("dfMerged:")
   dfMerged.printSchema()
   dfMerged.cache()

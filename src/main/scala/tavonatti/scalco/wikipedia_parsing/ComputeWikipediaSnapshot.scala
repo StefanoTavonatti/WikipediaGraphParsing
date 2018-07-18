@@ -68,8 +68,8 @@ object ComputeWikipediaSnapshot extends App {
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
     //.load("samples/Wikipedia-20180710084606.xml")
-    .load("samples/Wikipedia-20180710151718.xml")
-    //.load("samples/italy.xml")
+    //.load("samples/Wikipedia-20180710151718.xml")
+    .load("samples/italy.xml")
     //.load("samples/total.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
