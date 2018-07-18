@@ -19,7 +19,7 @@ import org.neo4j.spark._
 import scala.collection.mutable
 import scala.util.matching.Regex
 
-object Main2 extends App {
+object ComputeWikipediaSnapshot extends App {
   /*
        ==============================================
        SPARK CONFIGURATION AND DATA RETRIEVING
@@ -67,8 +67,8 @@ object Main2 extends App {
     .option("rowTag", "page")
     //.load("samples/pages.xml")
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    .load("samples/Wikipedia-20180710084606.xml")
-    //.load("samples/Wikipedia-20180710151718.xml")
+    //.load("samples/Wikipedia-20180710084606.xml")
+    .load("samples/Wikipedia-20180710151718.xml")
     //.load("samples/italy.xml")
     //.load("samples/total.xml")
     //.load("samples/spaceX.xml")
@@ -183,7 +183,7 @@ object Main2 extends App {
   val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
       .withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
       .drop("timestamp")
-      .withColumn("revision_month",functions.month($"revision_date"))
+      //.withColumn("revision_month",functions.month($"revision_date"))
       .withColumn("revision_year",functions.year($"revision_date"))
       .sort(col("timestampLong").desc)
 
@@ -192,8 +192,13 @@ object Main2 extends App {
   //dfClean2.show(true)
   dfClean2.cache()
 
-  val dfClean2Iterator= dfClean2.select("revision_year","revision_month").distinct()
-    .sort(col("revision_year").asc,col("revision_month").asc).collect().iterator
+ /* val dfClean2Iterator= dfClean2.select("revision_year","revision_month").distinct()
+    .sort(col("revision_year").asc,col("revision_month").asc)
+    .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
+*/
+   val dfClean2Iterator= dfClean2.select("revision_year").distinct()
+     .sort(col("revision_year").asc)
+     .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
 
   var rowsRDD:RDD[Row]=sc.emptyRDD
 
@@ -201,12 +206,13 @@ object Main2 extends App {
     val row=dfClean2Iterator.next()
 
     println("revison_"
-      +row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month"))
+      +row.getAs[String]("revision_year"))/*+"_"+
+      row.getAs[String]("revision_month"))*/
 
-    val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")).and(
-      col("revision_month").leq(row.getAs[Int]("revision_month"))
-    )).groupBy("id","title")
+    //.and(
+    //col("revision_month").leq(row.getAs[Int]("revision_month"))
+    val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")))
+      .groupBy("id","title")
       .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
         .as("text"),functions.first("revision_id").as("revision_id"),
         functions.first("tokens").as("tokens"),
@@ -216,7 +222,7 @@ object Main2 extends App {
         functions.first("connected_pages").as("connected_pages")
         ,functions.first("revision_date").as("revision_date"))
       .withColumn("revision_year",functions.lit(row.getAs[Int]("revision_year")))
-      .withColumn("revision_month",functions.lit(row.getAs[Int]("revision_month")))
+      //.withColumn("revision_month",functions.lit(row.getAs[Int]("revision_month")))
 
     rowsRDD=rowsRDD.union(tempTable.rdd)
 
@@ -240,186 +246,10 @@ object Main2 extends App {
 
   println("dfClean3: ")
   dfClean3.printSchema()
-  //dfClean3.show(true)
-  //System.exit(0)
 
-  //TODO not drop connected pages, size of the union
-  val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages"))).drop("connected_pages")
+  //.option("compression","bzip2")
+  dfClean3.coalesce(1).write.parquet("in/snappshot")//format("json").save("in/snappshot")
 
- // dfClean3Exploded.cache()
-  println("dfClean3Exploded: ")
-  dfClean3Exploded.printSchema()
-
-  /* Exporting pagesfor debugging */
-  /*dfClean3Exploded.select("linked_page").distinct().coalesce(1)
-    .write.format("csv").option("header","false").save("outputs/connected_pages")
-
-  dfClean3Exploded.select("linked_page").filter(functions.lower($"title").equalTo("italy")).distinct().coalesce(1)
-    .write.format("csv").option("header","false").save("outputs/connected_pages_italy")
-  */
-
-  val suffix="_LINKED"
-  val renamedColumns=dfClean3.columns.map(c=> dfClean3(c).as(s"$c$suffix"))
-  val dfClean3ExplodedRenamed = dfClean3.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
-
-
-
-  println(s"dfClean3ExplodedRenamed:")
-  dfClean3ExplodedRenamed.printSchema()
-
-  def computeSimilarityMetric(v1: SparseVector, v2:SparseVector):Double={
-    println("L:"+v1.size+" "+v2.size)
-    println("A: "+v1.toArray.length+" "+v2.toArray.length)
-    println("A: "+v1.toArray)
-    val b=v1.toArray
-    println(v1.indices.length+" "+v2.indices.length)
-    println(v1.values{0})
-    //println(v1.getClass)
-    return 0
-  }
-
-  def computeJaccardDistance(v1:mutable.WrappedArray[String], v2:mutable.WrappedArray[String]):Double={
-    val s1:Set[String]=v1.toSet
-    val s2:Set[String]=v2.toSet
-    val unionSet:Set[String]=s1.union(s2)
-    val intersectionSet:Set[String]=s1.intersect(s2)
-
-    val distance:Double=(unionSet.size.asInstanceOf[Double]-intersectionSet.size.asInstanceOf[Double])/unionSet.size.asInstanceOf[Double]
-
-    return distance
-  }
-
-  val computeSimilarityMetricUDF=udf[Double,SparseVector,SparseVector](computeSimilarityMetric)
-  val computeJaccardDistanceUDF=udf[Double,mutable.WrappedArray[String],mutable.WrappedArray[String]](computeJaccardDistance)
-
-  spark.udf.register("computeSimilarityMetricUDF",computeSimilarityMetricUDF)
-  spark.udf.register("computeJaccardDistanceUDF",computeJaccardDistanceUDF)
-
-  //println("dfClean3Exploded sample:")
- // dfClean3Exploded.select("id","title","linked_page").show()
-
-  val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix" && $"revision_month"===$"revision_month$suffix","inner")
-    .filter($"id"=!=$"id$suffix")
-    .withColumn("JaccardDistance",computeJaccardDistanceUDF(col("tokenClean"),col(s"tokenClean$suffix")))
-      .select("id",s"id$suffix","linked_page","title",s"title$suffix","revision_month","revision_year",s"revision_year$suffix",s"revision_month$suffix","JaccardDistance")
-  println("dfMerged:")
-  dfMerged.printSchema()
-  dfMerged.cache()
-  dfClean2.unpersist()
-  //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
-
-
- // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
-  //dfMerged.show(50)
-//  val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
-
-  //check for duplicates
- // assert(duplicatedEdges==0)
-
-  val neo = Neo4j(sc)
-
-  val savedNodes=nodes.repartition(1).map(n=>{
-    //println("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})")
-    neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})").loadRowRdd.count()
-    n
-  })
-
-  println(""+savedNodes.count()+" saved")
-
-  println("create index on :Page(pageId)...")
-  neo.cypher("CREATE INDEX ON :Page(pageId)").loadRowRdd.count()
-
-
-  dfMerged.show()
-
-  val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(1).rdd.map(row=>{
-    val idSource=row.getAs[Long]("id")
-    val idDest=row.getAs[Long](s"id$suffix")
-    val linkName=row.getAs[Int]("revision_year")+
-      "-"+row.getAs[Int]("revision_month")
-
-    //println("edge "+idSource+" "+idDest)
-    //saved
-    Edge(idSource,idDest,(linkName,row.getAs[Double]("JaccardDistance")))
-    //Edge(idSource,idDest,linkName)
-  })
-
-  val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
- // val pageGraph:Graph[String,String] = Graph(nodes, edges)
-
-  val savedEdges: RDD[Long]=edges.map(e=>{
-
-    val idSource=e.srcId
-    val idDest=e.dstId
-
-    val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
-      "\nCREATE (p)-[:revison_"+e.attr._1.replace("-","_")+"{distance:\""+e.attr._2+"\"}]->(p2)"
-    val saved=neo.cypher(query).loadRowRdd.count()
-    //println(query)
-    saved
-
-  })
-
-  //println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
-  println(""+savedEdges.count()+" edges saved")
-
-  val linkCount=dfMerged.groupBy("revision_year","revision_month").count()
-   .orderBy(col("revision_year").asc,col("revision_month").asc)
-
-  linkCount.coalesce(1).write.format("csv").option("separator",",")
-    .option("header","true").save("outputs/linkCount")
-
-  dfMerged.groupBy("id","title").agg(functions.count($"revision_month").as("months"),
-    functions.count($"revision_year").as("years")).coalesce(1)
-      .write.format("csv").option("header","true").save("outputs/page_d")
-
-  dfMerged.groupBy("id","title","revision_year","revision_month")
-    .agg(functions.count($"linked_page").as("number_of_links")).coalesce(1)
-    .write.format("csv").option("header","true").option("separator",",")
-    .save("outputs/linkTime")
-
-
-  println("Compute rank per year")
-
-
-  val it=linkCount.rdd.collect().iterator
-
-
-  var rankingRDD:RDD[(Long,Double,Int,Int)]=sc.emptyRDD
-
-  while (it.hasNext){
-    val row=it.next()
-
-    println("revison_"
-      +row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month"))
-
-    val vertices= pageGraph.subgraph(epred = t=>t.attr._1.equals("revison_"
-      +row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month")))
-      .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
-
-    vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year")+"_"+
-      row.getAs[String]("revision_month"))
-
-    val verticesDate=vertices.map(v=>{
-      (v._1.toLong,v._2,row.getAs[Int]("revision_year"),row.getAs[Int]("revision_month"))
-    })
-
-    rankingRDD=rankingRDD.union(verticesDate)
-
-  }
-
-
-  val rankingDF=rankingRDD.toDF("id","rank","revision_year","revision_month")
-      .join(idsDF,"id")
-  rankingDF.printSchema()
-  rankingDF.coalesce(1).write.format("csv")
-    .option("header","true").save("outputs/rankTime")
-  rankingDF.show()
-
-  dfMerged.coalesce(1).write.format("csv")
-    .option("header","true").save("outputs/dfMerged")
 
 }
 //https://github.com/neo4j-contrib/neo4j-spark-connector
