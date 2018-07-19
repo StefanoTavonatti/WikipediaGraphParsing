@@ -40,7 +40,7 @@ object ComputeGraph extends App {
 
   import spark.sqlContext.implicits._
 
-  val df=spark.read.parquet("in/snappshot")
+  val df=spark.read.parquet("in/snappshot/*")
 
   val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
 

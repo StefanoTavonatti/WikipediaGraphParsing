@@ -9,6 +9,7 @@ import org.apache.spark.graphx.{Edge, Graph, VertexId}
 import org.apache.spark.ml.feature.{BucketedRandomProjectionLSH, MinHashLSH}
 import org.apache.spark.ml.linalg.SparseVector
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.{Row, SparkSession, functions}
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
@@ -42,6 +43,7 @@ object ComputeWikipediaSnapshot extends App {
   conf.set("spark.neo4j.bolt.user","neo4j")
   conf.set("spark.neo4j.bolt.password","password")
   conf.set("spark.driver.maxResultSize","2048")
+ // conf.set("driver-memory","8g")
 
   /* Configures SparkSession and gets the spark context */
   val spark = SparkSession
@@ -112,11 +114,10 @@ object ComputeWikipediaSnapshot extends App {
   val dfTokenized=Utils.tokenizeAndClean(revisions.withColumn("textLowerAndUpper",$"revision.text._VALUE").select(col("id"),col("title"),col("revision.timestamp"), lowerRemoveAllSpecialCharsUDF(col("textLowerAndUpper")).as("text_clean"),col("textLowerAndUpper").as("text"),col("revision.id").as("revision_id")))
 
   /* Convert the timestamp from a date string to a long value */
-  val dfClean=dfTokenized.withColumn("timestampLong",stringToTimestampUDF(col("timestamp"))).repartition(6)
+  val dfClean=dfTokenized.withColumn("revision_date",functions.to_date(col("timestamp"),"yyyy-MM-dd'T'HH:mm:ss'Z'")).repartition(6)
   //dfClean.cache()
   println("dfClean:")
   dfClean.printSchema()
-  //dfClean.show()
 
   /* calculate the ids table*/
   val idsDF=nodes.toDF("id","name")
@@ -181,11 +182,12 @@ object ComputeWikipediaSnapshot extends App {
 
   /*extract ids and revision month and year*/
   val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
-      .withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
+      //.withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
       .drop("timestamp")
       //.withColumn("revision_month",functions.month($"revision_date"))
       .withColumn("revision_year",functions.year($"revision_date"))
-      .sort(col("timestampLong").desc)
+    .drop("text","text_clean")
+      .sort(col("revision_date").desc)
 
   println("dfClean2:")
   dfClean2.printSchema()
@@ -200,7 +202,9 @@ object ComputeWikipediaSnapshot extends App {
      .sort(col("revision_year").asc)
      .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
 
-  var rowsRDD:RDD[Row]=sc.emptyRDD
+  //var rowsRDD:RDD[Row]=sc.emptyRDD
+
+ // var snapshotDf=spark.emptyDataset(RowEncoder(dfClean2.schema))
 
   while (dfClean2Iterator.hasNext){
     val row=dfClean2Iterator.next()
@@ -213,18 +217,19 @@ object ComputeWikipediaSnapshot extends App {
     //col("revision_month").leq(row.getAs[Int]("revision_month"))
     val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")))
       .groupBy("id","title")
-      .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
-        .as("text"),functions.first("revision_id").as("revision_id"),
+      .agg(functions.first("revision_id").as("revision_id"),
         functions.first("tokens").as("tokens"),
         functions.first("tokenClean").as("tokenClean"),
-        functions.first("frequencyVector").as("frequencyVector")
-        ,functions.first("timestampLong").as("timestampLong"),
+        functions.first("frequencyVector").as("frequencyVector"),
+        //functions.first("timestampLong").as("timestampLong"),
         functions.first("connected_pages").as("connected_pages")
         ,functions.first("revision_date").as("revision_date"))
       .withColumn("revision_year",functions.lit(row.getAs[Int]("revision_year")))
       //.withColumn("revision_month",functions.lit(row.getAs[Int]("revision_month")))
 
-    rowsRDD=rowsRDD.union(tempTable.rdd)
+    //rowsRDD=rowsRDD.union(tempTable.rdd).repartition(8)
+    tempTable.write.parquet("in/snappshot/"+"revison_"
+      +row.getAs[String]("revision_year"))
 
   }
 
@@ -242,13 +247,14 @@ object ComputeWikipediaSnapshot extends App {
         functions.first("connected_pages").as("connected_pages")
         ,functions.first("revision_date").as("revision_date"))*/
 
-  val dfClean3=spark.createDataFrame(rowsRDD,dfClean2.schema)
+/*  val dfClean3=spark.read.parquet("in/partial")
+    //spark.createDataFrame(rowsRDD,dfClean2.schema)
 
   println("dfClean3: ")
   dfClean3.printSchema()
 
   //.option("compression","bzip2")
-  dfClean3.coalesce(1).write.parquet("in/snappshot")//format("json").save("in/snappshot")
+  dfClean3.coalesce(1).write.parquet("in/snappshot")//format("json").save("in/snappshot")*/
 
 
 }
