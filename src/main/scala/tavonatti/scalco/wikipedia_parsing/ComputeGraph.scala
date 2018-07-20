@@ -42,7 +42,7 @@ object ComputeGraph extends App {
 
   val df=spark.read.parquet("in/snappshot/*")
 
-  val nodes: RDD[(VertexId,String)]=df.select("id","title").rdd.map(n=>{
+  val nodes: RDD[(VertexId,String)]=df.select("id","title").distinct().rdd.map(n=>{
 
     /* Creating a node with the id of the page and the title */
     (n.get(0).asInstanceOf[Long],n.get(1).toString.toLowerCase)
