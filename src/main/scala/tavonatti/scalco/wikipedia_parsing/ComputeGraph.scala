@@ -40,8 +40,10 @@ object ComputeGraph extends App {
 
   import spark.sqlContext.implicits._
 
+  /*loading wikipedia snapshots*/
   val df=spark.read.parquet("in/snappshot/*")
 
+  /*find nodes*/
   val nodes: RDD[(VertexId,String)]=df.select("id","title").distinct().rdd.map(n=>{
 
     /* Creating a node with the id of the page and the title */
@@ -56,9 +58,9 @@ object ComputeGraph extends App {
 
 
   val dfClean3Exploded=df.withColumn("linked_page",functions.explode(col("connected_pages")))
-    //.drop("connected_pages")
 
-  // dfClean3Exploded.cache()
+
+
   println("dfClean3Exploded: ")
   dfClean3Exploded.printSchema()
 
@@ -70,6 +72,7 @@ object ComputeGraph extends App {
     .write.format("csv").option("header","false").save("outputs/connected_pages_italy")
   */
 
+  /*rename column for the self join*/
   val suffix="_LINKED"
   val renamedColumns=df.columns.map(c=> df(c).as(s"$c$suffix"))
   val dfClean3ExplodedRenamed = df.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
@@ -80,11 +83,24 @@ object ComputeGraph extends App {
   dfClean3ExplodedRenamed.printSchema()
 
 
+  /**
+    * compute the compite similarity metric
+    * @param jaccard
+    * @param links
+    * @param cosine
+    * @return
+    */
   def computeSimilarityMetric(jaccard:Double,links:Double,cosine:Double):Double={
     return 0.3*jaccard+0.3*cosine+0.6*links
   }
 
 
+  /**
+    * compute jaccard similarity between two pages
+    * @param v1
+    * @param v2
+    * @return
+    */
   def computeJaccardSimilarity(v1:mutable.WrappedArray[String], v2:mutable.WrappedArray[String]):Double={
     val s1:Set[String]=v1.toSet.map((str:String)=>(str.toLowerCase))
     val s2:Set[String]=v2.toSet.map((str:String)=>(str.toLowerCase))
@@ -96,6 +112,12 @@ object ComputeGraph extends App {
     return distance
   }
 
+  /**
+    * compute cosine similarity between two pages
+    * @param v1
+    * @param v2
+    * @return
+    */
   def computeCosineSimilarity(v1:SparseVector,v2:SparseVector):Double={
     val a=v1.toArray
     val b=v2.toArray
@@ -105,7 +127,10 @@ object ComputeGraph extends App {
     return ab/(magA*magB)
   }
 
-  //def computeLinkJaccardSimilarity
+
+  /*
+  register the UDFs
+   */
 
   val computeSimilarityMetricUDF=udf[Double,Double,Double,Double](computeSimilarityMetric)
   val computeJaccardSimilarityUDF=udf[Double,mutable.WrappedArray[String],mutable.WrappedArray[String]](computeJaccardSimilarity)
@@ -115,8 +140,10 @@ object ComputeGraph extends App {
   spark.udf.register("computeJaccardSimilarityUDF",computeJaccardSimilarityUDF)
   spark.udf.register("computeCosineSimilarityUDF",computeCosineSimilarityUDF)
 
-  //println("dfClean3Exploded sample:")
-  // dfClean3Exploded.select("id","title","linked_page").show()
+
+  /*
+    * selfjoin in order to connect every page with its linked pages an computing all the similarity metrics
+    */
 
   val dfMerged=dfClean3Exploded.join(dfClean3ExplodedRenamed,functions.lower($"linked_page")===functions.lower($"title$suffix") && $"revision_year"===$"revision_year$suffix","inner")
     .filter($"id"=!=$"id$suffix")
@@ -129,19 +156,10 @@ object ComputeGraph extends App {
   dfMerged.printSchema()
   dfMerged.cache()
 
-  //dfClean2.unpersist()
-  //dfMerged.withColumn("similarity",computeSimilarityMetricUDF(col("frequencyVector"),col(s"frequencyVector$suffix"))).show(true)
-
-
-  // dfMerged.select("id",s"id$suffix","title",s"title$suffix").show()
-  //dfMerged.show(50)
-  //  val duplicatedEdges=dfMerged.groupBy("title","title_LINKED","linked_page","revision_month","revision_year").count().filter(col("count").gt(1)).count()
-
-  //check for duplicates
-  // assert(duplicatedEdges==0)
 
   val neo = Neo4j(sc)
 
+  /*save nodes to Neo4j*/
   val savedNodes=nodes.repartition(1).map(n=>{
     //println("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})")
     neo.cypher("MERGE (p:Page{title:\""+n._2+"\", pageId:"+n._1+"})").loadRowRdd.count()
@@ -156,21 +174,18 @@ object ComputeGraph extends App {
 
   dfMerged.show()
 
+  /*create edges*/
   val edges: RDD[Edge[(String,Double)]] =dfMerged.coalesce(1).rdd.map(row=>{
     val idSource=row.getAs[Long]("id")
     val idDest=row.getAs[Long](s"id$suffix")
     val linkName=""+row.getAs[Int]("revision_year")
-    //+"-"+row.getAs[Int]("revision_month")
 
-    //println("edge "+idSource+" "+idDest)
-    //saved
     Edge(idSource,idDest,(linkName,row.getAs[Double]("similarity")))
-    //Edge(idSource,idDest,linkName)
   })
 
   val pageGraph:Graph[String,(String,Double)] = Graph(nodes, edges)
-  // val pageGraph:Graph[String,String] = Graph(nodes, edges)
 
+  /*save edges to neo4j*/
   val savedEdges: RDD[Long]=edges.map(e=>{
 
     val idSource=e.srcId
@@ -179,14 +194,13 @@ object ComputeGraph extends App {
     val query="MATCH (p:Page{pageId:"+idSource+"}),(p2:Page{pageId:"+idDest+"})"+
       "\nCREATE (p)-[:revision_"+e.attr._1.replace("-","_")+"{similarity:\""+e.attr._2+"\"}]->(p2)"
     val saved=neo.cypher(query).loadRowRdd.count()
-    //println(query)
     saved
 
   })
 
-  //println(""+savedEdges.reduce((a,b)=>a+b)+" edges saved")
   println(""+savedEdges.count()+" edges saved")
 
+  /*export some results*/
   val linkCount=dfMerged.groupBy("revision_year").count()
     .orderBy(col("revision_year").asc)
 
@@ -211,6 +225,7 @@ object ComputeGraph extends App {
 
   var rankingRDD:RDD[(Long,Double,Int)]=sc.emptyRDD
 
+  /*compute the page rank for every year*/
   while (it.hasNext){
     val row=it.next()
 
@@ -232,6 +247,7 @@ object ComputeGraph extends App {
   }
 
 
+  /* export the results of page rank*/
   val rankingDF=rankingRDD.toDF("id","rank","revision_year")
     .join(idsDF,"id")
   rankingDF.printSchema()
@@ -239,6 +255,7 @@ object ComputeGraph extends App {
     .option("header","true").save("outputs/rankTime")
   rankingDF.show()
 
+  /*export the whole edge and similarity table*/
   dfMerged.coalesce(1).write.format("csv")
     .option("header","true").save("outputs/dfMerged")
 
