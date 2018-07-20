@@ -207,7 +207,7 @@ object ComputeWikipediaSnapshot extends App {
 
 
     /*
-    * get the more updated revision every page in the current year
+    * get the most updated revision for every page in the current year
      */
     val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")))
       .groupBy("id","title")
