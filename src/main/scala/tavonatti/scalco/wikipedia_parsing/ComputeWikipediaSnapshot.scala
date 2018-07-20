@@ -86,7 +86,7 @@ object ComputeWikipediaSnapshot extends App {
 
   /*
       ==============================================
-      EXTRACTING MIN DATES
+      BUILDING THE SNAPSHOTS
       BUILDING THE NODES RDDS
       CLEANING THE DATASET
       ==============================================
@@ -182,79 +182,49 @@ object ComputeWikipediaSnapshot extends App {
 
   /*extract ids and revision month and year*/
   val dfClean2=dfClean.withColumn("connected_pages",extractIdsUDF(col("text")))
-      //.withColumn("revision_date",timestampToDateUDF(col("timestampLong")))
       .drop("timestamp")
-      //.withColumn("revision_month",functions.month($"revision_date"))
       .withColumn("revision_year",functions.year($"revision_date"))
     .drop("text","text_clean")
       .sort(col("revision_date").desc)
 
   println("dfClean2:")
   dfClean2.printSchema()
-  //dfClean2.show(true)
   dfClean2.cache()
 
- /* val dfClean2Iterator= dfClean2.select("revision_year","revision_month").distinct()
-    .sort(col("revision_year").asc,col("revision_month").asc)
-    .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
-*/
    val dfClean2Iterator= dfClean2.select("revision_year").distinct()
      .sort(col("revision_year").asc)
      .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
 
-  //var rowsRDD:RDD[Row]=sc.emptyRDD
 
- // var snapshotDf=spark.emptyDataset(RowEncoder(dfClean2.schema))
+  /*
+  * create wikipedia snapshot for every year
+  */
 
   while (dfClean2Iterator.hasNext){
     val row=dfClean2Iterator.next()
 
-    println("revison_"
-      +row.getAs[String]("revision_year"))/*+"_"+
-      row.getAs[String]("revision_month"))*/
+    println("revison_"+row.getAs[String]("revision_year"))
 
-    //.and(
-    //col("revision_month").leq(row.getAs[Int]("revision_month"))
+
+    /*
+    * get the more updated revision every page in the current year
+     */
     val tempTable=dfClean2.filter(col("revision_year").leq(row.getAs[Int]("revision_year")))
       .groupBy("id","title")
       .agg(functions.first("revision_id").as("revision_id"),
         functions.first("tokens").as("tokens"),
         functions.first("tokenClean").as("tokenClean"),
         functions.first("frequencyVector").as("frequencyVector"),
-        //functions.first("timestampLong").as("timestampLong"),
         functions.first("connected_pages").as("connected_pages")
         ,functions.first("revision_date").as("revision_date"))
       .withColumn("revision_year",functions.lit(row.getAs[Int]("revision_year")))
-      //.withColumn("revision_month",functions.lit(row.getAs[Int]("revision_month")))
 
-    //rowsRDD=rowsRDD.union(tempTable.rdd).repartition(8)
-    tempTable.write.parquet("in/snappshot/"+"revison_"
-      +row.getAs[String]("revision_year"))
+
+    /*save the current year snapshot in a parquet dataset*/
+    tempTable.write.parquet("in/snappshot/"+"revison_"+row.getAs[String]("revision_year"))
 
   }
 
-  //spark.createDataFrame(rowsRDD,dfClean2.schema).show()
-  //System.exit(0)
-
-  /*take the most update revision per month*/
-  /*val dfClean3=dfClean2.groupBy("id","title","revision_month","revision_year")
-      .agg(functions.first("text_clean").as("text_clean"),functions.first("text")
-        .as("text"),functions.first("revision_id").as("revision_id"),
-        functions.first("tokens").as("tokens"),
-        functions.first("tokenClean").as("tokenClean"),
-        functions.first("frequencyVector").as("frequencyVector")
-        ,functions.first("timestampLong").as("timestampLong"),
-        functions.first("connected_pages").as("connected_pages")
-        ,functions.first("revision_date").as("revision_date"))*/
-
-/*  val dfClean3=spark.read.parquet("in/partial")
-    //spark.createDataFrame(rowsRDD,dfClean2.schema)
-
-  println("dfClean3: ")
-  dfClean3.printSchema()
-
-  //.option("compression","bzip2")
-  dfClean3.coalesce(1).write.parquet("in/snappshot")//format("json").save("in/snappshot")*/
 
 
 }
