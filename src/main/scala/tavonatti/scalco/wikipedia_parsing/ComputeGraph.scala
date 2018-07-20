@@ -41,10 +41,10 @@ object ComputeGraph extends App {
   import spark.sqlContext.implicits._
 
   /*loading wikipedia snapshots*/
-  val df=spark.read.parquet("in/snappshot/*")
+  val dfClean3=spark.read.parquet("in/snappshot/*")
 
   /*find nodes*/
-  val nodes: RDD[(VertexId,String)]=df.select("id","title").distinct().rdd.map(n=>{
+  val nodes: RDD[(VertexId,String)]=dfClean3.select("id","title").distinct().rdd.map(n=>{
 
     /* Creating a node with the id of the page and the title */
     (n.get(0).asInstanceOf[Long],n.get(1).toString.toLowerCase)
@@ -57,7 +57,7 @@ object ComputeGraph extends App {
   idsDF.show()
 
 
-  val dfClean3Exploded=df.withColumn("linked_page",functions.explode(col("connected_pages")))
+  val dfClean3Exploded=dfClean3.withColumn("linked_page",functions.explode(col("connected_pages")))
 
 
 
@@ -74,8 +74,8 @@ object ComputeGraph extends App {
 
   /*rename column for the self join*/
   val suffix="_LINKED"
-  val renamedColumns=df.columns.map(c=> df(c).as(s"$c$suffix"))
-  val dfClean3ExplodedRenamed = df.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
+  val renamedColumns=dfClean3.columns.map(c=> dfClean3(c).as(s"$c$suffix"))
+  val dfClean3ExplodedRenamed = dfClean3.select(renamedColumns: _*)//.drop(s"linked_page$suffix")
 
 
 
