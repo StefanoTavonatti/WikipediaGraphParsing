@@ -43,6 +43,9 @@ object ComputeGraph extends App {
   /*loading wikipedia snapshots*/
   val dfClean3=spark.read.parquet("in/snappshot/*")
 
+  println("dfClean3:")
+  dfClean3.printSchema()
+
   /*find nodes*/
   val nodes: RDD[(VertexId,String)]=dfClean3.select("id","title").distinct().rdd.map(n=>{
 
