@@ -12,6 +12,8 @@ import scala.collection.mutable
 
 object ComputeGraph extends App {
 
+  val HDFS_BASE_URL=""
+
   val startTime:Long=System.currentTimeMillis()
 
   val format = Utils.format
@@ -41,7 +43,7 @@ object ComputeGraph extends App {
   import spark.sqlContext.implicits._
 
   /*loading wikipedia snapshots*/
-  val dfClean3=spark.read.parquet("in/snappshot/*")
+  val dfClean3=spark.read.parquet(HDFS_BASE_URL+"in/snappshot/*")
 
   println("dfClean3:")
   dfClean3.printSchema()
@@ -208,16 +210,16 @@ object ComputeGraph extends App {
     .orderBy(col("revision_year").asc)
 
   linkCount.coalesce(1).write.format("csv").option("separator",",")
-    .option("header","true").save("outputs/linkCount")
+    .option("header","true").save(HDFS_BASE_URL+"outputs/linkCount")
 
   dfMerged.groupBy("id","title").agg(functions.count($"revision_year").as("years"))
     .coalesce(1)
-    .write.format("csv").option("header","true").save("outputs/page_d")
+    .write.format("csv").option("header","true").save(HDFS_BASE_URL+"outputs/page_d")
 
   dfMerged.groupBy("id","title","revision_year")
     .agg(functions.count($"linked_page").as("number_of_links")).coalesce(1)
     .write.format("csv").option("header","true").option("separator",",")
-    .save("outputs/linkTime")
+    .save(HDFS_BASE_URL+"outputs/linkTime")
 
 
   println("Compute rank per year")
@@ -239,7 +241,7 @@ object ComputeGraph extends App {
       +row.getAs[String]("revision_year")))
       .pageRank(0.0001).vertices//.edges.saveAsTextFile("output/edges_test")
 
-    vertices.saveAsTextFile("outputs/ranks/"+row.getAs[String]("revision_year"))
+    vertices.saveAsTextFile(HDFS_BASE_URL+"outputs/ranks/"+row.getAs[String]("revision_year"))
 
     val verticesDate=vertices.map(v=>{
       (v._1.toLong,v._2,row.getAs[Int]("revision_year"))
@@ -255,11 +257,11 @@ object ComputeGraph extends App {
     .join(idsDF,"id")
   rankingDF.printSchema()
   rankingDF.coalesce(1).write.format("csv")
-    .option("header","true").save("outputs/rankTime")
+    .option("header","true").save(HDFS_BASE_URL+"outputs/rankTime")
   rankingDF.show()
 
   /*export the whole edge and similarity table*/
   dfMerged.coalesce(1).write.format("csv")
-    .option("header","true").save("outputs/dfMerged")
+    .option("header","true").save(HDFS_BASE_URL+"outputs/dfMerged")
 
 }

@@ -27,6 +27,7 @@ object ComputeWikipediaSnapshot extends App {
        ==============================================
     */
 
+  val HDFS_BASE_URL="";
 
   val startTime:Long=System.currentTimeMillis()
 
@@ -71,7 +72,8 @@ object ComputeWikipediaSnapshot extends App {
     //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
     //.load("samples/Wikipedia-20180710084606.xml")
     //.load("samples/Wikipedia-20180710151718.xml")
-    .load("samples/italy.xml")
+    //.load("hdfs://172.18.0.5/samples/italy.xml")
+    .load(HDFS_BASE_URL+"samples/italy.xml")
     //.load("samples/total.xml")
     //.load("samples/spaceX.xml")
     //.load("samples/Wikipedia-20180620152418.xml")
@@ -125,7 +127,7 @@ object ComputeWikipediaSnapshot extends App {
   idsDF.printSchema()
   idsDF.show()
 
-  idsDF.groupBy(col("name")).count().filter(col("count").gt(1)).coalesce(1).write.csv("outputs/dup")
+  idsDF.groupBy(col("name")).count().filter(col("count").gt(1)).coalesce(1).write.csv(HDFS_BASE_URL+"outputs/dup")
 
   /*check for duplicate names*/
   println("check for duplicated page title...")
@@ -191,6 +193,11 @@ object ComputeWikipediaSnapshot extends App {
   dfClean2.printSchema()
   dfClean2.cache()
 
+
+  println("Export revision_per_year")
+  dfClean2.groupBy("revision_year").agg(functions.count($"id")).coalesce(1)
+    .write.format("csv").option("header","true").save(HDFS_BASE_URL+"outputs/revision_year")
+
    val dfClean2Iterator= dfClean2.select("revision_year").distinct()
      .sort(col("revision_year").asc)
      .filter(col("revision_year").geq(2000).and(col("revision_year").leq(2018))).collect().iterator
@@ -221,7 +228,7 @@ object ComputeWikipediaSnapshot extends App {
 
 
     /*save the current year snapshot in a parquet dataset*/
-    tempTable.write.parquet("in/snappshot/"+"revison_"+row.getAs[String]("revision_year"))
+    tempTable.write.parquet(HDFS_BASE_URL+"in/snappshot/"+"revison_"+row.getAs[String]("revision_year"))
 
   }
 
