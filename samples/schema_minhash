@@ -1,4 +1,0 @@
-root
- |-- idA: long (nullable = true)
- |-- idB: long (nullable = true)
- |-- JaccardDistance: double (nullable = true)

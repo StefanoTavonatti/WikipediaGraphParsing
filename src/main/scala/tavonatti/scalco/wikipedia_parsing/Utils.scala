@@ -8,7 +8,6 @@ import org.apache.spark.ml.feature._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, Row}
 import org.neo4j.spark.Neo4j
-import tavonatti.scalco.wikipedia_parsing.Main.{df, format, sc}
 import org.apache.spark.sql.functions.col
 
 object Utils {
