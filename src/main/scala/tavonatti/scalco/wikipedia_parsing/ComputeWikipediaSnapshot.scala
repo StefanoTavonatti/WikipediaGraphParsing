@@ -68,16 +68,7 @@ object ComputeWikipediaSnapshot extends App {
   val df = spark.read
     .format("com.databricks.spark.xml")
     .option("rowTag", "page")
-    //.load("samples/pages.xml")
-    //.load("samples/Wikipedia-20180220091437.xml")//1000 revisions
-    //.load("samples/Wikipedia-20180710084606.xml")
-    //.load("samples/Wikipedia-20180710151718.xml")
-    //.load("hdfs://172.18.0.5/samples/italy.xml")
     .load(HDFS_BASE_URL+"samples/italy.xml")
-    //.load("samples/total.xml")
-    //.load("samples/spaceX.xml")
-    //.load("samples/Wikipedia-20180620152418.xml")
-    //.load("samples/Wikipedia-20180116144701.xml")
 
   import spark.implicits._
   import scala.collection.JavaConverters._
