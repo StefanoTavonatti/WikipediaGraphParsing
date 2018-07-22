@@ -205,6 +205,11 @@ object ComputeGraph extends App {
 
   println(""+savedEdges.count()+" edges saved")
 
+  /*saving Graph on HDFS*/
+  println("saving graph on HDFS")
+  pageGraph.vertices.saveAsTextFile(HDFS_BASE_URL+"/outputs/vertices")
+  pageGraph.edges.saveAsTextFile(HDFS_BASE_URL+"/outputs/edges")
+
   /*export some results*/
   val linkCount=dfMerged.groupBy("revision_year").count()
     .orderBy(col("revision_year").asc)
