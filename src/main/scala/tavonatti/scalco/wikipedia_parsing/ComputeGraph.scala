@@ -12,7 +12,7 @@ import scala.collection.mutable
 
 object ComputeGraph extends App {
 
-  val HDFS_BASE_URL=""
+  val HDFS_BASE_URL="hdfs://<ip-address>/"
 
   val startTime:Long=System.currentTimeMillis()
 
